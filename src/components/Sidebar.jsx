@@ -3,7 +3,7 @@ import { useData } from '../context/DataContext'
 import {
   Upload, LayoutDashboard, Wand2, Sigma,
   Filter, BarChart3, Table2, GitMerge, TrendingUp, AlertTriangle,
-  Sparkles, Code2, FileText, Layers, MessageSquare, ClipboardList,
+  Sparkles, Code2, FileText, Layers, MessageSquare,
 } from 'lucide-react'
 
 const navGroups = [
@@ -42,12 +42,7 @@ const navGroups = [
       { to: '/icons', label: 'Icon Library', icon: Layers },
     ],
   },
-  {
-    label: 'Aryan Tasks',
-    items: [
-      { to: '/aryan/cx-report', label: 'CX Monthly Survey Report', icon: ClipboardList },
-    ],
-  },
+
 ]
 
 export default function Sidebar() {
