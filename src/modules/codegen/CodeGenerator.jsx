@@ -66,7 +66,8 @@ export default function CodeGenerator() {
     const py = await window.loadPyodide({
       indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/',
     })
-    await py.loadPackage(['micropip', 'pandas', 'matplotlib', 'numpy', 'seaborn'])
+    await py.loadPackage('micropip')
+    await py.loadPackage(['pandas', 'matplotlib', 'numpy'])
     pyodideRef.current = py
     return py
   }, [])
