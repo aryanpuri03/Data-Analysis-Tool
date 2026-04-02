@@ -89,7 +89,7 @@ export function inferColumnTypes(dataset) {
     // Check categorical vs freetext
     const uniqueValues = new Set(nonNull.map(v => String(v).trim().toLowerCase()))
     const uniqueRatio = uniqueValues.size / nonNull.length
-    if (uniqueValues.size <= 20 || uniqueRatio < 0.1) {
+    if (uniqueValues.size <= 50 || uniqueRatio < 0.1) {
       types[col] = 'categorical'
       continue
     }

@@ -72,12 +72,12 @@ ${colSummaries.join('\n')}
 
 `
 
-  const MAX_ROWS = 300
-  const rowsToSend = dataset.length <= MAX_ROWS ? dataset : dataset.slice(0, MAX_ROWS)
-  const isFullDataset = dataset.length <= MAX_ROWS
-  const rowsLabel = isFullDataset
+  const MAX_CELLS = 3000
+  const maxRows = Math.max(5, Math.min(300, Math.floor(MAX_CELLS / Math.max(1, colCount))))
+  const rowsToSend = dataset.slice(0, maxRows)
+  const rowsLabel = dataset.length <= maxRows
     ? `All ${dataset.length} rows`
-    : `Sample rows (first ${MAX_ROWS} of ${dataset.length} total)`
+    : `Sample rows (first ${maxRows} of ${dataset.length} — column stats above cover the full dataset)`
   prompt += `\n${rowsLabel}:\n`
   rowsToSend.forEach((row, i) => {
     const vals = columns.map(c => `${c}=${JSON.stringify(row[c])}`).join(', ')
