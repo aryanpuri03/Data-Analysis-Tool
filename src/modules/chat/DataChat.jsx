@@ -86,7 +86,34 @@ try:
             df[_c] = pd.to_numeric(df[_c])
         except Exception:
             pass
-    exec(_user_code, {"df": df, "pd": pd, "np": np, "print": print})
+    def find_col(df, term):
+        """Fuzzy-match a natural language term to the closest column name."""
+        t = str(term).lower().strip()
+        cols = list(df.columns)
+        # 1. Exact (case-insensitive)
+        for c in cols:
+            if c.lower() == t:
+                return c
+        # 2. All keywords present
+        kws = [w for w in t.split() if len(w) > 2]
+        if kws:
+            full = [c for c in cols if all(k in c.lower() for k in kws)]
+            if full:
+                return min(full, key=len)
+        # 3. Score by keyword hits
+        if kws:
+            scored = sorted(
+                [(sum(1 for k in kws if k in c.lower()), -len(c), c)
+                 for c in cols if any(k in c.lower() for k in kws)],
+                reverse=True
+            )
+            if scored:
+                return scored[0][2]
+        # 4. Single-word substring
+        matches = [c for c in cols if t in c.lower()]
+        return min(matches, key=len) if matches else None
+
+    exec(_user_code, {"df": df, "pd": pd, "np": np, "print": print, "find_col": find_col})
 except Exception as _e:
     print(f"Error: {_e}")
 finally:
@@ -192,10 +219,13 @@ export default function DataChat() {
 RULES: Declarative statements only. Every claim must cite a specific figure. No filler, no hedging.
 
 LIVE COMPUTATION AVAILABLE: You have a Python/pandas executor with the FULL ${dataset.length}-row dataset loaded as \`df\`.
+- Column names are full survey questions (e.g. "What age group do you fall into?"). Users will refer to them in shorthand ("age", "satisfaction", "terminal") — map them to the correct column.
+- A helper \`find_col(df, 'term')\` is available: it fuzzy-matches any natural language term to the closest column name. ALWAYS use it instead of hardcoding column names.
+  Example: age_col = find_col(df, 'age')  →  returns "What age group do you fall into?"
+           print(df[age_col].value_counts())
 - For cross-column filtering, groupby, precise counts, correlations, or any row-level analysis: write a \`\`\`python code block
-- Use print() to output results — they will run automatically and be shown to the user
+- Use print() to output results — they run automatically and appear to the user
 - pandas and numpy are pre-imported; df is already loaded — do not import or reload them
-- Column names are EXACT and case-sensitive — use names from the schema below
 - If the question IS answerable from the column stats below: answer directly without code
 
 USER QUESTION:
