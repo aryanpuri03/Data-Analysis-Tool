@@ -83,6 +83,12 @@ export default function CodeGenerator() {
       const py = await loadPyodide()
       setPyStatus('running')
 
+      // Strip micropip calls — all needed packages are pre-loaded
+      const cleanCode = result.code
+        .split('\n')
+        .filter(l => !/^\s*import micropip/.test(l) && !/micropip\.install/.test(l))
+        .join('\n')
+
       // Pass dataset as JSON string — safe cross-language transfer
       py.globals.set('_records_json', JSON.stringify(dataset))
 
@@ -110,7 +116,7 @@ _orig_show = plt.show
 plt.show = lambda *a, **kw: None  # suppress interactive show
 
 # ── generated code ──
-${result.code}
+${cleanCode}
 # ── end generated code ──
 
 plt.show = _orig_show
@@ -213,7 +219,7 @@ REQUEST: "${request}"
 
 RULES:
 - The dataset is already loaded as a pandas DataFrame named \`df\` with the exact columns listed above.
-- Use only pandas, numpy, matplotlib, and seaborn. Never import micropip or install packages.
+- Use only pandas, numpy, and matplotlib. Never import micropip, seaborn, or any package not in this list.
 - Charts: figure size (12, 6), clear title, axis labels, legend, plt.tight_layout(), plt.show().
 - Handle nulls with dropna() or fillna() where needed.
 - Add a short comment on each logical block.
