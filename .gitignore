@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+
+# Gemini/agent artifacts
+.gemini/
+.agents/
+
+# Portable Node (don't upload 60MB binary)
+node-portable/
