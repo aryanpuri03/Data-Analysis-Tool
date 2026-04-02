@@ -19,6 +19,7 @@ const AnomalyExplainer = lazy(() => import('./modules/anomaly/AnomalyExplainer')
 const DataChat = lazy(() => import('./modules/chat/DataChat'))
 const CodeGenerator = lazy(() => import('./modules/codegen/CodeGenerator'))
 const IconLibrary = lazy(() => import('./modules/icons/IconLibrary'))
+const CXMonthlyReport = lazy(() => import('./modules/aryan/CXMonthlyReport'))
 
 function PageLoader() {
   return (
@@ -52,6 +53,7 @@ export default function App() {
               <Route path="/anomalies" element={<AnomalyExplainer />} />
               <Route path="/codegen"   element={<CodeGenerator />} />
               <Route path="/icons"    element={<IconLibrary />} />
+              <Route path="/aryan/cx-report" element={<CXMonthlyReport />} />
               <Route path="*"         element={<Navigate to="/upload" replace />} />
             </Routes>
           </Suspense>
