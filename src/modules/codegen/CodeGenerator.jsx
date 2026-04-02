@@ -66,7 +66,7 @@ export default function CodeGenerator() {
     const py = await window.loadPyodide({
       indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/',
     })
-    await py.loadPackage(['pandas', 'matplotlib', 'numpy'])
+    await py.loadPackage(['micropip', 'pandas', 'matplotlib', 'numpy', 'seaborn'])
     pyodideRef.current = py
     return py
   }, [])
@@ -213,7 +213,7 @@ REQUEST: "${request}"
 
 RULES:
 - The dataset is already loaded as a pandas DataFrame named \`df\` with the exact columns listed above.
-- Use only pandas, numpy, and matplotlib/seaborn.
+- Use only pandas, numpy, matplotlib, and seaborn. Never import micropip or install packages.
 - Charts: figure size (12, 6), clear title, axis labels, legend, plt.tight_layout(), plt.show().
 - Handle nulls with dropna() or fillna() where needed.
 - Add a short comment on each logical block.

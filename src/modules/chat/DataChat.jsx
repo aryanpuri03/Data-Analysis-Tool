@@ -73,21 +73,24 @@ export default function DataChat() {
     setLoading(true)
 
     const context = buildDataContext(dataset, columns, types)
-    // Build conversation history (last 6 messages for context)
-    const history = [...messages.slice(-6), userMsg]
+    // Build conversation history (last 5 messages, excluding the current question)
+    const history = messages.slice(-5)
       .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
       .join('\n\n')
 
     const prompt = `ROLE: Senior data analyst, Edinburgh Airport CX team.
 RULES: Declarative statements only. Every claim must cite a specific figure from the dataset context. No filler, no hedging, no conversational language. If the data is insufficient to answer, state precisely what is missing. Use bullet points for lists.
 
+USER QUESTION:
+${text.trim()}
+
 DATASET CONTEXT:
 ${context}
 
-CONVERSATION:
+CONVERSATION HISTORY (for reference):
 ${history}
 
-Respond to the analyst's latest question directly and precisely.`
+Answer the USER QUESTION above using the DATASET CONTEXT. Be direct and cite specific figures.`
 
     try {
       const response = await fetch('/api/insights', {

@@ -114,20 +114,23 @@ export default function AIAssistant() {
     inputRef.current?.focus()
 
     const context = buildDataContext(dataset, columns, types)
-    const history = newMessages.slice(-6)
+    const history = newMessages.slice(-7, -1)
       .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
       .join('\n\n')
 
     const prompt = `ROLE: Senior data analyst, Edinburgh Airport CX team.
 RULES: Declarative statements only. Cite specific figures. No filler, no hedging. Use bullet points for lists.
 
-DATASET:
+USER QUESTION:
+${text.trim()}
+
+DATASET CONTEXT:
 ${context}
 
-CONVERSATION:
+CONVERSATION HISTORY (for reference):
 ${history}
 
-Respond directly and precisely.`
+Answer the USER QUESTION above using the DATASET CONTEXT. Be direct and cite specific figures.`
 
     try {
       const response = await fetch('/api/insights', {
