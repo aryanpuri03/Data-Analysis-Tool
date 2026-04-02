@@ -28,3 +28,9 @@ __pycache__/
 
 # Portable Node (don't upload 60MB binary)
 node-portable/
+
+# Claude Code internal files
+.claude/
+
+# Session memory (local only)
+.claude-memory.md
