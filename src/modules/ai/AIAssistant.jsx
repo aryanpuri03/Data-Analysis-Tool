@@ -26,8 +26,9 @@ function buildDataContext(dataset, columns, types) {
     } else if (type === 'categorical') {
       const freq = {}
       nonNull.forEach(v => { const s = String(v).trim(); freq[s] = (freq[s] || 0) + 1 })
-      const top = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 8)
-      info += `, ${Object.keys(freq).length} unique, top: ${top.map(([v, c]) => `"${v}"(${c})`).join(', ')}`
+      const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1])
+      const top = sorted.slice(0, 50)
+      info += `, ${Object.keys(freq).length} unique, all: ${top.map(([v, c]) => `"${v}"(${c})`).join(', ')}`
     } else if (type === 'date') {
       const dates = nonNull.map(v => Date.parse(String(v))).filter(ts => !isNaN(ts)).sort((a, b) => a - b)
       if (dates.length) info += `, range: ${new Date(dates[0]).toISOString().split('T')[0]} to ${new Date(dates[dates.length - 1]).toISOString().split('T')[0]}`
@@ -35,12 +36,19 @@ function buildDataContext(dataset, columns, types) {
     return `  - ${info}`
   }).join('\n')
 
-  const sampleRows = dataset.slice(0, 5).map((row, i) => {
+  const MAX_ROWS = 300
+  const rowsToSend = dataset.length <= MAX_ROWS ? dataset : dataset.slice(0, MAX_ROWS)
+  const isFullDataset = dataset.length <= MAX_ROWS
+  const rowsLabel = isFullDataset
+    ? `All ${dataset.length} rows`
+    : `Sample rows (first ${MAX_ROWS} of ${dataset.length} total)`
+
+  const sampleRows = rowsToSend.map((row, i) => {
     const vals = columns.map(c => `${c}=${JSON.stringify(row[c])}`)
     return `  Row ${i + 1}: ${vals.join(', ')}`
   }).join('\n')
 
-  return `Dataset: ${dataset.length} rows, ${columns.length} columns.\n\nColumns:\n${colSummaries}\n\nSample rows:\n${sampleRows}`
+  return `Dataset: ${dataset.length} rows, ${columns.length} columns.\n\nColumns:\n${colSummaries}\n\n${rowsLabel}:\n${sampleRows}`
 }
 
 const SUGGESTED_QUESTIONS = [

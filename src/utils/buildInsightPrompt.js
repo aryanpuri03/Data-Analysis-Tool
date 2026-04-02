@@ -40,9 +40,10 @@ export function buildInsightPrompt(dataset, columns, types, fileName, customQues
     } else if (type === 'categorical') {
       const freq = {}
       nonNull.forEach(v => { const s = String(v).trim(); freq[s] = (freq[s] || 0) + 1 })
-      const top = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 5)
+      const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1])
+      const top = sorted.slice(0, 50)
       const topStr = top.map(([v, c]) => `"${v}"(${c})`).join(', ')
-      stats += `, ${Object.keys(freq).length} unique, top: ${topStr}`
+      stats += `, ${Object.keys(freq).length} unique, all: ${topStr}`
     } else {
       const unique = new Set(nonNull.map(v => String(v).trim().toLowerCase())).size
       stats += `, ${unique} unique values`
@@ -71,9 +72,14 @@ ${colSummaries.join('\n')}
 
 `
 
-  const sampleRows = dataset.slice(0, 3)
-  prompt += `\nSample rows (first 3):\n`
-  sampleRows.forEach((row, i) => {
+  const MAX_ROWS = 300
+  const rowsToSend = dataset.length <= MAX_ROWS ? dataset : dataset.slice(0, MAX_ROWS)
+  const isFullDataset = dataset.length <= MAX_ROWS
+  const rowsLabel = isFullDataset
+    ? `All ${dataset.length} rows`
+    : `Sample rows (first ${MAX_ROWS} of ${dataset.length} total)`
+  prompt += `\n${rowsLabel}:\n`
+  rowsToSend.forEach((row, i) => {
     const vals = columns.map(c => `${c}=${JSON.stringify(row[c])}`).join(', ')
     prompt += `  Row ${i + 1}: ${vals}\n`
   })
