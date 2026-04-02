@@ -54,11 +54,11 @@ export default function Sidebar() {
       <div className="px-4 pt-5 pb-4 shrink-0 border-b border-white/[0.07]">
         <div className="flex items-center gap-2.5">
           <div className="w-6 h-6 rounded bg-brand-blue flex items-center justify-center shrink-0">
-            <span className="text-white text-[10px] font-bold leading-none select-none">Ic</span>
+            <span className="text-white text-[10px] font-bold leading-none select-none">EDI</span>
           </div>
-          <span className="text-white text-[13px] font-semibold tracking-tight">Iconographpt</span>
+          <span className="text-white text-[13px] font-semibold tracking-tight">Data Analysis Tool</span>
         </div>
-        <p className="text-[11px] text-white/30 mt-1 ml-8">Edinburgh Airport CX</p>
+        <p className="text-[11px] text-white/30 mt-1 ml-8">Edinburgh Airport</p>
       </div>
 
       {/* Dataset status pill */}
