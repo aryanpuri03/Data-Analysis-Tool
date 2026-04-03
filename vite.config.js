@@ -16,6 +16,10 @@ export default defineConfig(({ mode }) => {
           // This runs BEFORE Vite's internal middleware
           server.middlewares.use((req, res, next) => {
             const url = req.url.split('?')[0]
+            if (url === '/icon-library' || url === '/icon-library/') {
+              req.url = '/index.html'
+              return next()
+            }
             // Redirect root to /upload (React app default route)
             if (url === '/' || url === '') {
               res.writeHead(302, { Location: '/upload' })

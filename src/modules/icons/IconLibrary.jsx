@@ -14,7 +14,7 @@ export default function IconLibrary() {
         </div>
       )}
       <iframe
-        src="/index.html"
+        src="/icon-library"
         title="Icon Library"
         className="w-full h-full border-0"
         onLoad={() => setLoading(false)}
