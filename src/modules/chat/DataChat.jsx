@@ -1,186 +1,82 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useData } from '../../context/DataContext'
 import { isNullish } from '../../utils/inferTypes'
+import { computeProfile } from '../../utils/computeProfile'
 import { renderMarkdown } from '../../utils/renderMarkdown'
-import { getPyodide } from '../../utils/pyodideLoader'
-import { AlertCircle, Send, Loader2, Trash2, Copy, Check, MessageSquare, Bot, User, ChevronDown, ChevronUp, Terminal } from 'lucide-react'
+import { AlertCircle, Send, Loader2, Trash2, Copy, Check, MessageSquare, Bot, User } from 'lucide-react'
 
-function buildDataContext(dataset, columns, types) {
-  if (!dataset || !columns) return ''
-  const colSummaries = columns.map(col => {
-    const type = types[col] || 'freetext'
-    const values = dataset.map(r => r[col])
-    const nonNull = values.filter(v => !isNullish(v))
-    const nullCount = values.length - nonNull.length
-    let info = `"${col}" [${type}], ${nullCount} nulls`
+// Fuzzy-match user question words against column names, return ranked list of relevant cols
+function findRelevantColumns(question, columns) {
+  const words = question.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 2)
+  if (!words.length) return []
+  return columns
+    .map(col => ({ col, score: words.reduce((s, w) => s + (col.toLowerCase().includes(w) ? 1 : 0), 0) }))
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(x => x.col)
+    .slice(0, 12)
+}
 
-    if (type === 'numeric') {
-      const nums = nonNull.map(v => Number(String(v).replace(/,/g, ''))).filter(isFinite).sort((a, b) => a - b)
-      if (nums.length) {
-        const sum = nums.reduce((a, b) => a + b, 0)
-        const mean = (sum / nums.length).toFixed(2)
-        const mid = Math.floor(nums.length / 2)
-        const median = nums.length % 2 === 0 ? ((nums[mid - 1] + nums[mid]) / 2).toFixed(2) : nums[mid].toFixed(2)
-        info += `, min=${nums[0]}, max=${nums[nums.length - 1]}, mean=${mean}, median=${median}`
-      }
-    } else if (type === 'categorical') {
-      const freq = {}
-      nonNull.forEach(v => { const s = String(v).trim(); freq[s] = (freq[s] || 0) + 1 })
-      const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1])
-      const top = sorted.slice(0, 50)
-      info += `, ${Object.keys(freq).length} unique, all: ${top.map(([v, c]) => `"${v}"(${c})`).join(', ')}`
-    } else if (type === 'date') {
-      const dates = nonNull.map(v => Date.parse(String(v))).filter(ts => !isNaN(ts)).sort((a, b) => a - b)
-      if (dates.length) info += `, range: ${new Date(dates[0]).toISOString().split('T')[0]} to ${new Date(dates[dates.length - 1]).toISOString().split('T')[0]}`
-    } else {
-      const sample = nonNull.slice(0, 3).map(v => `"${String(v).slice(0, 60)}"`)
-      info += `, e.g. ${sample.join(', ')}`
+function formatColStats(col, colStat, allValues) {
+  if (!colStat) return `  - "${col}": no data`
+  const { type, nullCount, total } = colStat
+  const nullPct = ((nullCount / total) * 100).toFixed(1)
+  let line = `  - "${col}" [${type}], ${nullPct}% null`
+
+  if (type === 'numeric') {
+    const { min, max, mean, median, stdDev } = colStat
+    line += `, min=${min}, max=${max}, mean=${mean}, median=${median}, stdDev=${stdDev}`
+  } else if (type === 'categorical') {
+    // Use full distribution from allValues, not just top5 from profile
+    const dist = allValues[col]
+    if (dist) {
+      const entries = Object.entries(dist).sort((a, b) => b[1] - a[1])
+      const formatted = entries.map(([v, c]) => `"${v}"(${c}, ${((c / (total - nullCount)) * 100).toFixed(1)}%)`).join(', ')
+      line += `, ${entries.length} values: ${formatted}`
     }
-    return `  - ${info}`
-  }).join('\n')
-
-  const MAX_CELLS = 3000
-  const maxRows = Math.max(5, Math.min(300, Math.floor(MAX_CELLS / Math.max(1, columns.length))))
-  const rowsToSend = dataset.slice(0, maxRows)
-  const rowsLabel = dataset.length <= maxRows
-    ? `All ${dataset.length} rows`
-    : `Sample rows (first ${maxRows} of ${dataset.length} — column stats above cover the full dataset)`
-
-  const sampleRows = rowsToSend.map((row, i) => {
-    const vals = columns.map(c => `${c}=${JSON.stringify(row[c])}`)
-    return `  Row ${i + 1}: ${vals.join(', ')}`
-  }).join('\n')
-
-  return `Dataset: ${dataset.length} rows, ${columns.length} columns.\n\nColumns:\n${colSummaries}\n\n${rowsLabel}:\n${sampleRows}`
-}
-
-function extractPythonCode(text) {
-  const m = text.match(/```python\s*([\s\S]*?)```/)
-  return m?.[1]?.trim() || null
-}
-
-function stripPythonBlock(text) {
-  return text.replace(/```python[\s\S]*?```/g, '').trim()
-}
-
-async function runComputation(code, dataset, onUpdate) {
-  try {
-    onUpdate({ status: 'loading-pyodide' })
-    const py = await getPyodide()
-    onUpdate({ status: 'running' })
-
-    py.globals.set('_records_json', JSON.stringify(dataset))
-    py.globals.set('_user_code', code)
-
-    await py.runPythonAsync(`
-import sys, io, json
-import pandas as pd
-import numpy as np
-
-_buf = io.StringIO()
-sys.stdout = _buf
-try:
-    df = pd.DataFrame(json.loads(_records_json))
-    for _c in df.columns:
-        try:
-            df[_c] = pd.to_numeric(df[_c])
-        except Exception:
-            pass
-    def find_col(df, term):
-        """Fuzzy-match a natural language term to the closest column name."""
-        t = str(term).lower().strip()
-        cols = list(df.columns)
-        # 1. Exact (case-insensitive)
-        for c in cols:
-            if c.lower() == t:
-                return c
-        # 2. All keywords present
-        kws = [w for w in t.split() if len(w) > 2]
-        if kws:
-            full = [c for c in cols if all(k in c.lower() for k in kws)]
-            if full:
-                return min(full, key=len)
-        # 3. Score by keyword hits
-        if kws:
-            scored = sorted(
-                [(sum(1 for k in kws if k in c.lower()), -len(c), c)
-                 for c in cols if any(k in c.lower() for k in kws)],
-                reverse=True
-            )
-            if scored:
-                return scored[0][2]
-        # 4. Single-word substring
-        matches = [c for c in cols if t in c.lower()]
-        return min(matches, key=len) if matches else None
-
-    exec(_user_code, {"df": df, "pd": pd, "np": np, "print": print, "find_col": find_col})
-except Exception as _e:
-    print(f"Error: {_e}")
-finally:
-    sys.stdout = sys.__stdout__
-    _output = _buf.getvalue()
-`)
-    const output = (py.globals.get('_output') || '').trim() || '(no output printed)'
-    onUpdate({ status: 'done', output })
-  } catch (err) {
-    const msg = err.message || String(err)
-    const traceStart = msg.indexOf('File "<exec>"')
-    onUpdate({ status: 'error', error: traceStart !== -1 ? msg.slice(traceStart) : msg })
+  } else if (type === 'date') {
+    const { earliest, latest } = colStat
+    line += `, range: ${earliest} to ${latest}`
+  } else {
+    line += `, ${colStat.uniqueCount} unique values`
   }
+  return line
 }
 
-function ComputeBlock({ compute, code }) {
-  const [showCode, setShowCode] = useState(false)
+function buildDataContext(dataset, columns, types, question) {
+  if (!dataset || !columns) return ''
 
-  return (
-    <div className="mt-3 rounded-lg border border-border overflow-hidden text-xs">
-      <div className={`flex items-center gap-2 px-3 py-2 ${
-        compute.status === 'done' ? 'bg-emerald-50 border-b border-emerald-200' :
-        compute.status === 'error' ? 'bg-red-50 border-b border-red-200' :
-        'bg-slate-50 border-b border-border'
-      }`}>
-        {(compute.status === 'loading-pyodide' || compute.status === 'running') && (
-          <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-blue shrink-0" />
-        )}
-        {compute.status === 'done' && <Terminal className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
-        {compute.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
-        <span className={`font-medium ${
-          compute.status === 'done' ? 'text-emerald-700' :
-          compute.status === 'error' ? 'text-red-600' :
-          'text-slate-600'
-        }`}>
-          {compute.status === 'loading-pyodide' && 'Loading Python runtime…'}
-          {compute.status === 'running' && 'Running computation on full dataset…'}
-          {compute.status === 'done' && 'Computed result'}
-          {compute.status === 'error' && 'Computation error'}
-        </span>
-        <button
-          onClick={() => setShowCode(v => !v)}
-          className="ml-auto flex items-center gap-1 text-slate-400 hover:text-slate-600 cursor-pointer"
-        >
-          {showCode ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-          {showCode ? 'Hide code' : 'View code'}
-        </button>
-      </div>
+  // Pre-compute full categorical distributions (all values, not just top5)
+  const allValues = {}
+  for (const col of columns) {
+    if ((types[col] || 'freetext') === 'categorical') {
+      const freq = {}
+      dataset.forEach(r => {
+        const v = r[col]
+        if (!isNullish(v)) { const s = String(v).trim(); freq[s] = (freq[s] || 0) + 1 }
+      })
+      allValues[col] = freq
+    }
+  }
 
-      {showCode && (
-        <pre className="px-3 py-2 bg-gray-950 text-gray-200 font-mono text-[11px] overflow-x-auto whitespace-pre">
-          {code}
-        </pre>
-      )}
+  const { columnStats } = computeProfile(dataset, columns, types)
+  const relevant = question ? findRelevantColumns(question, columns) : []
 
-      {compute.status === 'done' && (
-        <pre className="px-3 py-2.5 bg-white text-emerald-900 font-mono text-[11px] overflow-x-auto whitespace-pre leading-relaxed">
-          {compute.output}
-        </pre>
-      )}
-      {compute.status === 'error' && (
-        <pre className="px-3 py-2.5 bg-red-50 text-red-700 font-mono text-[11px] overflow-x-auto whitespace-pre leading-relaxed">
-          {compute.error}
-        </pre>
-      )}
-    </div>
-  )
+  const buildSummary = col => formatColStats(col, columnStats[col], allValues)
+
+  let ctx = `Dataset: ${dataset.length} rows, ${columns.length} columns.\n`
+  ctx += `Column names are full survey questions — match user shorthand (e.g. "age") to the nearest column.\n\n`
+
+  if (relevant.length > 0) {
+    ctx += `COLUMNS MOST RELEVANT TO THIS QUESTION:\n`
+    ctx += relevant.map(buildSummary).join('\n')
+    ctx += '\n\nALL COLUMNS:\n'
+  } else {
+    ctx += 'All columns:\n'
+  }
+  ctx += columns.map(buildSummary).join('\n')
+
+  return ctx
 }
 
 const SUGGESTED_QUESTIONS = [
@@ -210,23 +106,15 @@ export default function DataChat() {
     setInput('')
     setLoading(true)
 
-    const context = buildDataContext(dataset, columns, types)
+    const context = buildDataContext(dataset, columns, types, text.trim())
     const history = messages.slice(-5)
       .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
       .join('\n\n')
 
     const prompt = `ROLE: Senior data analyst, Edinburgh Airport CX team.
-RULES: Declarative statements only. Every claim must cite a specific figure. No filler, no hedging.
+RULES: Declarative statements only. Cite specific figures. No filler, no hedging.
 
-LIVE COMPUTATION AVAILABLE: You have a Python/pandas executor with the FULL ${dataset.length}-row dataset loaded as \`df\`.
-- Column names are full survey questions (e.g. "What age group do you fall into?"). Users will refer to them in shorthand ("age", "satisfaction", "terminal") — map them to the correct column.
-- A helper \`find_col(df, 'term')\` is available: it fuzzy-matches any natural language term to the closest column name. ALWAYS use it instead of hardcoding column names.
-  Example: age_col = find_col(df, 'age')  →  returns "What age group do you fall into?"
-           print(df[age_col].value_counts())
-- For cross-column filtering, groupby, precise counts, correlations, or any row-level analysis: write a \`\`\`python code block
-- Use print() to output results — they run automatically and appear to the user
-- pandas and numpy are pre-imported; df is already loaded — do not import or reload them
-- If the question IS answerable from the column stats below: answer directly without code
+IMPORTANT — Column naming: Columns are full survey questions. The user will refer to them in natural language ("age", "satisfaction", "terminal", "wait time"). Use your best judgement to match their words to the correct column. The stats below include the complete value distribution for every categorical column across all ${dataset.length} rows — use these to answer directly without needing extra computation.
 
 USER QUESTION:
 ${text.trim()}
@@ -237,7 +125,7 @@ ${context}
 CONVERSATION HISTORY:
 ${history}
 
-Answer the USER QUESTION. For cross-column or row-level queries, write a \`\`\`python code block.`
+Answer the USER QUESTION directly from the stats above. Cite exact column names and figures.`
 
     try {
       const response = await fetch('/api/insights', {
@@ -247,30 +135,7 @@ Answer the USER QUESTION. For cross-column or row-level queries, write a \`\`\`p
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Request failed')
-
-      const content = data.content || 'No response received.'
-      const code = extractPythonCode(content)
-
-      const assistantMsg = {
-        role: 'assistant',
-        content,
-        compute: code ? { status: 'loading-pyodide' } : undefined,
-        computeCode: code || undefined,
-      }
-      setMessages(prev => [...prev, assistantMsg])
-
-      if (code) {
-        await runComputation(code, dataset, (update) => {
-          setMessages(prev => {
-            const updated = [...prev]
-            const last = updated[updated.length - 1]
-            if (last?.computeCode) {
-              updated[updated.length - 1] = { ...last, compute: { ...last.compute, ...update } }
-            }
-            return updated
-          })
-        })
-      }
+      setMessages(prev => [...prev, { role: 'assistant', content: data.content || 'No response received.' }])
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}`, isError: true }])
     } finally {
@@ -306,7 +171,7 @@ Answer the USER QUESTION. For cross-column or row-level queries, write a \`\`\`p
       <div className="mb-4">
         <h1 className="text-2xl font-semibold text-text-primary">Chat with Your Data</h1>
         <p className="mt-1 text-sm text-text-secondary">
-          Ask questions about <span className="font-medium text-text-primary">{fileName}</span> — {dataset.length.toLocaleString()} rows × {columns.length} columns · Cross-column queries run Python automatically
+          Ask questions about <span className="font-medium text-text-primary">{fileName}</span> — {dataset.length.toLocaleString()} rows × {columns.length} columns
         </p>
       </div>
 
@@ -316,7 +181,7 @@ Answer the USER QUESTION. For cross-column or row-level queries, write a \`\`\`p
             <MessageSquare className="w-10 h-10 text-text-secondary/30 mb-4" />
             <p className="text-sm font-medium text-text-primary mb-1">Ask anything about your data</p>
             <p className="text-xs text-text-secondary mb-6 text-center max-w-md">
-              The AI sees your full column statistics. For cross-column queries (e.g. "average score by age group"), it writes and runs Python locally against the complete dataset.
+              Ask in plain English — no need to know exact column names. The AI sees full value distributions for every column across all rows.
             </p>
             <div className="flex flex-wrap gap-2 justify-center max-w-lg">
               {SUGGESTED_QUESTIONS.map((q, i) => (
@@ -344,20 +209,15 @@ Answer the USER QUESTION. For cross-column or row-level queries, write a \`\`\`p
                       </span>
                       {msg.role === 'assistant' && (
                         <button onClick={() => copyMessage(msg.content, i)}
-                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-all cursor-pointer"
+                          className="p-1 hover:bg-gray-200 rounded transition-all cursor-pointer opacity-0 hover:opacity-100"
                           style={{ opacity: copiedIdx === i ? 1 : undefined }}>
                           {copiedIdx === i ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-text-secondary" />}
                         </button>
                       )}
                     </div>
                     <div className={`text-sm leading-relaxed ${msg.isError ? 'text-red-600' : 'text-text-primary'}`}>
-                      {msg.role === 'assistant' && !msg.isError
-                        ? renderMarkdown(msg.computeCode ? stripPythonBlock(msg.content) : msg.content)
-                        : msg.content}
+                      {msg.role === 'assistant' && !msg.isError ? renderMarkdown(msg.content) : msg.content}
                     </div>
-                    {msg.computeCode && (
-                      <ComputeBlock compute={msg.compute || { status: 'loading-pyodide' }} code={msg.computeCode} />
-                    )}
                   </div>
                 </div>
               </div>
@@ -393,7 +253,7 @@ Answer the USER QUESTION. For cross-column or row-level queries, write a \`\`\`p
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && input.trim()) sendMessage(input) }}
-            placeholder="Ask a question — cross-column queries run Python automatically…"
+            placeholder="Ask a question in plain English…"
             disabled={loading}
             className="flex-1 px-4 py-3 text-sm outline-none disabled:opacity-50"
           />
