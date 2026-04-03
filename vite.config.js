@@ -194,7 +194,10 @@ export default defineConfig(({ mode }) => {
     appType: 'spa',
     build: {
       rollupOptions: {
-        input: 'app.html',
+        input: {
+          app: 'app.html',
+          index: 'index.html',
+        },
       },
     },
     server: {
