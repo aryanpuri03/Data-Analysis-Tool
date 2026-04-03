@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
-      // SPA fallback: rewrite app routes to app.html so the React router handles them
+      // SPA fallback: rewrite app routes to index.html so the React router handles them
       {
         name: 'spa-fallback',
         configureServer(server) {
@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
           server.middlewares.use((req, res, next) => {
             const url = req.url.split('?')[0]
             if (url === '/icon-library' || url === '/icon-library/') {
-              req.url = '/index.html'
+              req.url = '/icon-library.html'
               return next()
             }
             // Redirect root to /upload (React app default route)
@@ -35,13 +35,13 @@ export default defineConfig(({ mode }) => {
               url.startsWith('/@') ||
               url.startsWith('/node_modules/') ||
               url === '/index.html' ||
-              url === '/app.html' ||
+              url === '/icon-library.html' ||
               url.includes('.')
             ) {
               return next()
             }
             // SPA routes (/charts, /upload, /profile, etc.) → serve app.html
-            req.url = '/app.html'
+            req.url = '/index.html'
             next()
           })
         },
@@ -199,15 +199,15 @@ export default defineConfig(({ mode }) => {
     build: {
       rollupOptions: {
         input: {
-          app: 'app.html',
           index: 'index.html',
+          'icon-library': 'icon-library.html',
         },
       },
     },
     server: {
       open: '/upload',
       watch: {
-        ignored: ['**/icons/**', '**/source/**', '**/.venv/**', '**/scripts/**', '**/index.html'],
+        ignored: ['**/icons/**', '**/source/**', '**/.venv/**', '**/scripts/**'],
       },
     },
     optimizeDeps: {

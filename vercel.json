@@ -3,7 +3,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/icon-library", "destination": "/index.html" },
-    { "source": "/((?!api|assets|icons/|index\\.html|icon-library).*)", "destination": "/app.html" }
+    { "source": "/icon-library", "destination": "/icon-library.html" },
+    { "source": "/((?!api|assets|icons/|index\\.html|icon-library(?:\\.html)?).*)", "destination": "/index.html" }
   ]
 }
