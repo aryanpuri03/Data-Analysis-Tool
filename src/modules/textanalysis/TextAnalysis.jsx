@@ -3,13 +3,17 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie,
 } from 'recharts'
-import { Type, Sparkles, Loader2, AlertCircle, RefreshCw, Search, X } from 'lucide-react'
+import {
+  Type, Sparkles, Loader2, AlertCircle, RefreshCw, Search, X,
+  CheckCircle2, XCircle,
+} from 'lucide-react'
 import { useData } from '../../context/DataContext'
 import { renderMarkdown } from '../../utils/renderMarkdown'
 import { analyseColumn, buildBM25Index, bm25Search, extractKeywords, extractPhrases, scoreSentiment } from '../../utils/textAnalysisUtils'
 
 const SENTIMENT_COLOURS = { positive: '#10B981', neutral: '#94A3B8', negative: '#EF4444' }
 const SENTIMENT_LABELS = ['positive', 'neutral', 'negative']
+const RELEVANCE_CAP = 40   // max rows sent to LLM for relevance review
 
 function SentimentBadge({ label }) {
   const cls = {
@@ -29,7 +33,6 @@ function Panel({ title, children }) {
   )
 }
 
-// Highlight matched terms inside a text string — returns mixed string/JSX array
 function highlightText(text, terms) {
   if (!terms || terms.length === 0) return text
   const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
@@ -60,6 +63,12 @@ export default function TextAnalysis() {
   const [focusedAiOutput, setFocusedAiOutput]   = useState('')
   const [focusedAiLoading, setFocusedAiLoading] = useState(false)
   const [focusedAiError, setFocusedAiError]     = useState(null)
+
+  // Relevance review state
+  const [relevanceVerdicts, setRelevanceVerdicts] = useState({})  // rowIdx → { relevant, reason }
+  const [relevanceLoading, setRelevanceLoading]   = useState(false)
+  const [showOnlyRelevant, setShowOnlyRelevant]   = useState(false)
+
   const expandCacheRef = useRef({})
 
   function computeFocusedAnalysis(matchedTexts) {
@@ -79,7 +88,52 @@ export default function TextAnalysis() {
     }
   }
 
-  // Detect text columns: freetext type, or categorical with avg length > 20
+  async function runRelevanceCheck(results, query) {
+    if (!results.length) return
+    setRelevanceLoading(true)
+    setRelevanceVerdicts({})
+    const cap = results.slice(0, RELEVANCE_CAP)
+    const numbered = cap.map((r, i) => `${i + 1}. ${r.text}`).join('\n')
+    const prompt = `You are reviewing customer feedback from Edinburgh Airport. A team member searched for: "${query}"
+
+The system returned ${cap.length} responses as potential matches. For each response below, decide if it is genuinely about the topic "${query}" or a false match (e.g. matched on an unrelated word).
+
+Return ONLY a valid JSON array. Each item must have exactly:
+- "n": the response number (1 to ${cap.length})
+- "relevant": true or false
+- "reason": a concise 4-8 word explanation
+
+Responses:
+${numbered}
+
+Return ONLY the JSON array, no markdown, no explanation.`
+
+    try {
+      const res = await fetch('/api/insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, maxTokens: 900 }),
+      })
+      if (!res.ok) throw new Error(`API error ${res.status}`)
+      const { content } = await res.json()
+      const match = content.match(/\[[\s\S]*?\]/)
+      if (!match) throw new Error('Unexpected format')
+      const parsed = JSON.parse(match[0])
+      const map = {}
+      for (const item of parsed) {
+        if (typeof item.n === 'number' && item.n >= 1 && item.n <= cap.length) {
+          map[cap[item.n - 1].idx] = { relevant: !!item.relevant, reason: item.reason || '' }
+        }
+      }
+      setRelevanceVerdicts(map)
+    } catch (_e) {
+      // silently fail — verdicts just won't appear
+    } finally {
+      setRelevanceLoading(false)
+    }
+  }
+
+  // Detect text columns
   const textColumns = useMemo(() => {
     if (!dataset || !columns) return []
     return columns.filter(col => {
@@ -93,19 +147,16 @@ export default function TextAnalysis() {
     })
   }, [dataset, columns, types])
 
-  // Run analysis when column selected
   const analysis = useMemo(() => {
     if (!activeCol || !dataset) return null
     return analyseColumn(dataset, activeCol)
   }, [activeCol, dataset])
 
-  // BM25 index — built once per column, reused across searches
   const bm25Index = useMemo(() => {
     if (!analysis) return null
     return buildBM25Index(analysis.texts)
   }, [analysis])
 
-  // Reset AI output when column changes
   const selectColumn = useCallback((col) => {
     setActiveCol(col)
     setAiOutput('')
@@ -118,9 +169,11 @@ export default function TextAnalysis() {
     setFocusedAnalysis(null)
     setFocusedAiOutput('')
     setFocusedAiError(null)
+    setRelevanceVerdicts({})
+    setRelevanceLoading(false)
+    setShowOnlyRelevant(false)
   }, [])
 
-  // Natural language topic search — AI expands description → BM25 → full FTA on results
   const runFocusedSearch = useCallback(async () => {
     const q = searchQuery.trim()
     if (!q || !analysis || !bm25Index) return
@@ -130,12 +183,16 @@ export default function TextAnalysis() {
     setFocusedAnalysis(null)
     setFocusedAiOutput('')
     setFocusedAiError(null)
+    setRelevanceVerdicts({})
+    setRelevanceLoading(false)
+    setShowOnlyRelevant(false)
+
+    let finalResults = []
 
     try {
       let terms = expandCacheRef.current[q.toLowerCase()]
 
       if (!terms) {
-        // Prompt handles both single words AND natural language descriptions
         const prompt = `You are a text analysis assistant for Edinburgh Airport's CX team.
 
 The analyst wants to search customer feedback for responses related to: "${q}"
@@ -160,7 +217,6 @@ Examples:
         })
         if (!res.ok) throw new Error(`API error ${res.status}`)
         const { content } = await res.json()
-
         const match = content.match(/\[[\s\S]*?\]/)
         if (!match) throw new Error('AI returned unexpected format')
         terms = JSON.parse(match[0]).filter(t => typeof t === 'string' && t.length > 0)
@@ -169,16 +225,14 @@ Examples:
 
       setExpandedTerms(terms)
       const results = bm25Search(terms, analysis.texts, bm25Index)
+      finalResults = results
       setSearchResults(results)
-
-      // Run full FTA on matched responses
-      const matchedTexts = results.map(r => r.text)
-      setFocusedAnalysis(computeFocusedAnalysis(matchedTexts))
+      setFocusedAnalysis(computeFocusedAnalysis(results.map(r => r.text)))
     } catch (e) {
-      // Fallback: substring search
       const fallback = analysis.texts
         .map((text, idx) => ({ text, idx, normScore: text.toLowerCase().includes(q.toLowerCase()) ? 1 : 0 }))
         .filter(r => r.normScore > 0)
+      finalResults = fallback
       setExpandedTerms([q])
       setSearchResults(fallback)
       setFocusedAnalysis(computeFocusedAnalysis(fallback.map(r => r.text)))
@@ -186,9 +240,16 @@ Examples:
     } finally {
       setSearchLoading(false)
     }
+
+    // After search completes, ask LLM to review which results are truly relevant
+    if (finalResults.length > 0) {
+      runRelevanceCheck(finalResults, q)
+    }
   }, [searchQuery, analysis, bm25Index])
 
   const removeTerm = useCallback((term) => {
+    setRelevanceVerdicts({})
+    setShowOnlyRelevant(false)
     setExpandedTerms(prev => {
       const next = prev.filter(t => t !== term)
       if (analysis && bm25Index && next.length > 0) {
@@ -203,7 +264,6 @@ Examples:
     })
   }, [analysis, bm25Index])
 
-  // AI deep-dive on the focused (filtered) results
   const runFocusedAiAnalysis = useCallback(async () => {
     if (!focusedAnalysis || !searchQuery) return
     setFocusedAiLoading(true)
@@ -279,13 +339,29 @@ Be specific and reference actual phrases from the data where relevant.`
     }
   }, [analysis, activeCol])
 
-  // Row explorer filtered by sentiment tab
   const filteredRows = useMemo(() => {
     if (!analysis) return []
     const pairs = analysis.texts.map((text, i) => ({ text, sentiment: analysis.sentiments[i] }))
     if (sentimentTab === 'all') return pairs.slice(0, 50)
     return pairs.filter(p => p.sentiment.label === sentimentTab).slice(0, 50)
   }, [analysis, sentimentTab])
+
+  // Derive relevance summary counts
+  const relevanceSummary = useMemo(() => {
+    const vals = Object.values(relevanceVerdicts)
+    if (!vals.length) return null
+    const confirmed = vals.filter(v => v.relevant).length
+    const rejected = vals.filter(v => !v.relevant).length
+    return { confirmed, rejected, total: vals.length }
+  }, [relevanceVerdicts])
+
+  // Filtered search results (show only relevant if toggle active)
+  const displayedResults = useMemo(() => {
+    if (!searchResults) return []
+    const base = searchResults.slice(0, 50)
+    if (!showOnlyRelevant || !relevanceSummary) return base
+    return base.filter(r => relevanceVerdicts[r.idx]?.relevant === true)
+  }, [searchResults, showOnlyRelevant, relevanceVerdicts, relevanceSummary])
 
   // ── Empty states ──
   if (!dataset) {
@@ -452,38 +528,29 @@ Be specific and reference actual phrases from the data where relevant.`
                   </button>
                 </div>
               )}
-
               {aiLoading && (
                 <div className="flex flex-col items-center justify-center py-8 gap-2">
                   <Loader2 className="w-5 h-5 text-brand-blue animate-spin" />
                   <p className="text-xs text-text-secondary">Analysing…</p>
                 </div>
               )}
-
               {aiError && (
                 <div className="space-y-3">
                   <div className="flex items-start gap-2 p-3 bg-red-50 rounded-lg">
                     <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-red-700">{aiError}</p>
                   </div>
-                  <button
-                    onClick={runAiAnalysis}
-                    className="flex items-center gap-1.5 text-xs text-brand-blue hover:underline"
-                  >
+                  <button onClick={runAiAnalysis} className="flex items-center gap-1.5 text-xs text-brand-blue hover:underline">
                     <RefreshCw className="w-3 h-3" /> Retry
                   </button>
                 </div>
               )}
-
               {aiOutput && !aiLoading && (
                 <div className="space-y-3">
                   <div className="prose prose-sm max-w-none text-sm">
                     {renderMarkdown(aiOutput)}
                   </div>
-                  <button
-                    onClick={runAiAnalysis}
-                    className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-brand-blue transition-colors"
-                  >
+                  <button onClick={runAiAnalysis} className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-brand-blue transition-colors">
                     <RefreshCw className="w-3 h-3" /> Re-analyse
                   </button>
                 </div>
@@ -499,7 +566,7 @@ Be specific and reference actual phrases from the data where relevant.`
                 <h3 className="text-sm font-semibold text-text-primary">Topic Search</h3>
               </div>
               <p className="text-xs text-text-secondary">
-                Describe what you're looking for in plain English — AI expands your description into every related term, then runs full sentiment + keyword analysis on the matched responses.
+                Describe what you're looking for in plain English — AI expands your description into every related term, runs full sentiment + keyword analysis on matched responses, then reviews each result for true relevance.
               </p>
             </div>
 
@@ -658,25 +725,95 @@ Be specific and reference actual phrases from the data where relevant.`
                   )}
                 </div>
 
-                {/* Matched responses */}
+                {/* ── Matched responses with relevance verdicts ── */}
                 <div>
-                  <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-2">Matched Responses</p>
+                  {/* Section header + relevance summary */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
+                        Matched Responses
+                      </p>
+                      {relevanceLoading && (
+                        <span className="flex items-center gap-1 text-[11px] text-blue-500">
+                          <Loader2 className="w-3 h-3 animate-spin" /> AI reviewing relevance…
+                        </span>
+                      )}
+                      {relevanceSummary && !relevanceLoading && (
+                        <span className="flex items-center gap-2 text-[11px]">
+                          <span className="flex items-center gap-0.5 text-emerald-600">
+                            <CheckCircle2 className="w-3 h-3" /> {relevanceSummary.confirmed} relevant
+                          </span>
+                          <span className="text-text-muted">·</span>
+                          <span className="flex items-center gap-0.5 text-red-500">
+                            <XCircle className="w-3 h-3" /> {relevanceSummary.rejected} not relevant
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                    {relevanceSummary && !relevanceLoading && (
+                      <button
+                        onClick={() => setShowOnlyRelevant(v => !v)}
+                        className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
+                          showOnlyRelevant
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'text-text-secondary border-border hover:border-emerald-500 hover:text-emerald-600'
+                        }`}
+                      >
+                        {showOnlyRelevant ? 'Showing relevant only' : 'Show relevant only'}
+                      </button>
+                    )}
+                  </div>
+
                   <div className="divide-y divide-border">
-                    {searchResults.slice(0, 50).map(({ text, idx, normScore }, i) => (
-                      <div key={idx} className="py-2.5 flex items-start gap-3">
-                        <div className="w-1 self-stretch rounded-full bg-slate-100 relative shrink-0">
-                          <div className="absolute bottom-0 left-0 w-full rounded-full bg-brand-blue" style={{ height: `${Math.round(normScore * 100)}%` }} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-text-primary leading-relaxed">{highlightText(text, expandedTerms)}</p>
-                          <span className="text-[10px] text-text-muted mt-0.5 block">row {idx + 1} · {Math.round(normScore * 100)}% match</span>
-                        </div>
-                        <SentimentBadge label={focusedAnalysis.sentiments[i]?.label || 'neutral'} />
-                      </div>
-                    ))}
+                    {displayedResults.length === 0 ? (
+                      <p className="text-xs text-text-secondary py-4 text-center">
+                        {showOnlyRelevant ? 'No responses confirmed relevant yet — AI review may still be running.' : 'No results.'}
+                      </p>
+                    ) : (
+                      displayedResults.map(({ text, idx, normScore }, i) => {
+                        const verdict = relevanceVerdicts[idx]
+                        const isChecked = verdict !== undefined
+                        return (
+                          <div key={idx} className={`py-3 flex items-start gap-3 ${isChecked && !verdict.relevant ? 'opacity-50' : ''}`}>
+                            {/* BM25 score bar */}
+                            <div className="w-1 self-stretch rounded-full bg-slate-100 relative shrink-0">
+                              <div className="absolute bottom-0 left-0 w-full rounded-full bg-brand-blue" style={{ height: `${Math.round(normScore * 100)}%` }} />
+                            </div>
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <p className="text-sm text-text-primary leading-relaxed">{highlightText(text, expandedTerms)}</p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] text-text-muted">row {idx + 1} · {Math.round(normScore * 100)}% match</span>
+                                {/* Relevance verdict */}
+                                {relevanceLoading && i < RELEVANCE_CAP && !isChecked && (
+                                  <span className="flex items-center gap-0.5 text-[10px] text-blue-400">
+                                    <Loader2 className="w-2.5 h-2.5 animate-spin" /> checking…
+                                  </span>
+                                )}
+                                {isChecked && verdict.relevant && (
+                                  <span className="flex items-center gap-0.5 text-[10px] text-emerald-600 font-medium">
+                                    <CheckCircle2 className="w-3 h-3" /> {verdict.reason}
+                                  </span>
+                                )}
+                                {isChecked && !verdict.relevant && (
+                                  <span className="flex items-center gap-0.5 text-[10px] text-red-400">
+                                    <XCircle className="w-3 h-3" /> {verdict.reason}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <SentimentBadge label={focusedAnalysis.sentiments[searchResults.indexOf(searchResults.find(r => r.idx === idx))]?.label || 'neutral'} />
+                          </div>
+                        )
+                      })
+                    )}
                   </div>
                   {searchResults.length > 50 && (
                     <p className="text-[11px] text-text-muted mt-3">Showing top 50 of {searchResults.length} matches.</p>
+                  )}
+                  {searchResults.length > RELEVANCE_CAP && relevanceSummary && (
+                    <p className="text-[11px] text-text-muted mt-1">
+                      Relevance reviewed on first {RELEVANCE_CAP} results.
+                    </p>
                   )}
                 </div>
               </div>
@@ -713,16 +850,13 @@ Be specific and reference actual phrases from the data where relevant.`
                 ))}
               </div>
             </div>
-
             <div className="divide-y divide-border">
               {filteredRows.length === 0 ? (
                 <p className="text-xs text-text-secondary py-4">No responses in this category.</p>
               ) : (
                 filteredRows.map(({ text, sentiment }, i) => (
                   <div key={i} className="py-2.5 flex items-start gap-3">
-                    <span className="text-[11px] text-text-muted w-6 shrink-0 pt-0.5">
-                      {i + 1}
-                    </span>
+                    <span className="text-[11px] text-text-muted w-6 shrink-0 pt-0.5">{i + 1}</span>
                     <p className="text-sm text-text-primary flex-1 leading-relaxed">{text}</p>
                     <SentimentBadge label={sentiment.label} />
                   </div>
