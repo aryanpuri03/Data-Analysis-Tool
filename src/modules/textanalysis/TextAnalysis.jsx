@@ -1,12 +1,12 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  PieChart, Pie, Legend,
+  PieChart, Pie,
 } from 'recharts'
-import { Type, Sparkles, Loader2, AlertCircle, RefreshCw } from 'lucide-react'
+import { Type, Sparkles, Loader2, AlertCircle, RefreshCw, Search, X } from 'lucide-react'
 import { useData } from '../../context/DataContext'
 import { renderMarkdown } from '../../utils/renderMarkdown'
-import { analyseColumn } from '../../utils/textAnalysisUtils'
+import { analyseColumn, buildBM25Index, bm25Search } from '../../utils/textAnalysisUtils'
 
 const SENTIMENT_COLOURS = { positive: '#10B981', neutral: '#94A3B8', negative: '#EF4444' }
 const SENTIMENT_LABELS = ['positive', 'neutral', 'negative']
@@ -29,6 +29,19 @@ function Panel({ title, children }) {
   )
 }
 
+// Highlight matched terms inside a text string — returns mixed string/JSX array
+function highlightText(text, terms) {
+  if (!terms || terms.length === 0) return text
+  const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const pattern = new RegExp(`(${escaped.join('|')})`, 'gi')
+  const parts = text.split(pattern)
+  return parts.map((part, i) =>
+    i % 2 === 1
+      ? <mark key={i} className="bg-yellow-200 text-yellow-900 rounded-sm px-0.5 font-medium not-italic">{part}</mark>
+      : part
+  )
+}
+
 export default function TextAnalysis() {
   const { dataset, columns, types } = useData()
   const [activeCol, setActiveCol] = useState(null)
@@ -36,6 +49,14 @@ export default function TextAnalysis() {
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState(null)
   const [sentimentTab, setSentimentTab] = useState('all')
+
+  // Focused search state
+  const [searchQuery, setSearchQuery]       = useState('')
+  const [expandedTerms, setExpandedTerms]   = useState([])
+  const [searchResults, setSearchResults]   = useState(null)   // null = not run yet
+  const [searchLoading, setSearchLoading]   = useState(false)
+  const [searchError, setSearchError]       = useState(null)
+  const expandCacheRef = useRef({})   // query → string[] (avoids re-calling AI)
 
   // Detect text columns: freetext type, or categorical with avg length > 20
   const textColumns = useMemo(() => {
@@ -57,13 +78,82 @@ export default function TextAnalysis() {
     return analyseColumn(dataset, activeCol)
   }, [activeCol, dataset])
 
+  // BM25 index — built once per column, reused across searches
+  const bm25Index = useMemo(() => {
+    if (!analysis) return null
+    return buildBM25Index(analysis.texts)
+  }, [analysis])
+
   // Reset AI output when column changes
   const selectColumn = useCallback((col) => {
     setActiveCol(col)
     setAiOutput('')
     setAiError(null)
     setSentimentTab('all')
+    setSearchQuery('')
+    setExpandedTerms([])
+    setSearchResults(null)
+    setSearchError(null)
   }, [])
+
+  // Expand query with AI, then run BM25
+  const runFocusedSearch = useCallback(async () => {
+    const q = searchQuery.trim()
+    if (!q || !analysis || !bm25Index) return
+    setSearchLoading(true)
+    setSearchError(null)
+    setSearchResults(null)
+
+    try {
+      let terms = expandCacheRef.current[q.toLowerCase()]
+
+      if (!terms) {
+        const prompt = `You are a text analysis assistant. Given the search topic "${q}", return a JSON array of 15–20 related words, synonyms, and common variants a customer might use when writing about this topic in airport feedback. Include the original word, plural/verb forms, and closely related concepts. Return ONLY a valid JSON array of lowercase strings, no explanation, no markdown.
+
+Example for "queue": ["queue","queues","queuing","queued","wait","waiting","waited","delay","delays","delayed","line","backlog","hold","slow","congestion","busy"]`
+
+        const res = await fetch('/api/insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, maxTokens: 300 }),
+        })
+        if (!res.ok) throw new Error(`API error ${res.status}`)
+        const { content } = await res.json()
+
+        // Extract JSON array from response
+        const match = content.match(/\[[\s\S]*?\]/)
+        if (!match) throw new Error('AI returned unexpected format')
+        terms = JSON.parse(match[0]).filter(t => typeof t === 'string' && t.length > 0)
+        expandCacheRef.current[q.toLowerCase()] = terms
+      }
+
+      setExpandedTerms(terms)
+      const results = bm25Search(terms, analysis.texts, bm25Index)
+      setSearchResults(results)
+    } catch (e) {
+      // Fallback: basic substring search if AI fails
+      const fallback = analysis.texts
+        .map((text, idx) => ({ text, idx, normScore: text.toLowerCase().includes(q.toLowerCase()) ? 1 : 0 }))
+        .filter(r => r.normScore > 0)
+      setExpandedTerms([q])
+      setSearchResults(fallback)
+      if (fallback.length === 0) setSearchError(e.message || 'Search failed')
+    } finally {
+      setSearchLoading(false)
+    }
+  }, [searchQuery, analysis, bm25Index])
+
+  const removeTerm = useCallback((term) => {
+    setExpandedTerms(prev => {
+      const next = prev.filter(t => t !== term)
+      if (analysis && bm25Index && next.length > 0) {
+        setSearchResults(bm25Search(next, analysis.texts, bm25Index))
+      } else {
+        setSearchResults(null)
+      }
+      return next
+    })
+  }, [analysis, bm25Index])
 
   const runAiAnalysis = useCallback(async () => {
     if (!analysis) return
@@ -312,6 +402,109 @@ Be specific and reference actual phrases from the data where relevant.`
                 </div>
               )}
             </Panel>
+          </div>
+
+          {/* Focused Search */}
+          <div className="bg-white border border-border rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-1">
+              <Search className="w-4 h-4 text-brand-blue" />
+              <h3 className="text-sm font-semibold text-text-primary">Focused Search</h3>
+            </div>
+            <p className="text-xs text-text-secondary mb-4">
+              Type any word or topic — AI will find related terms and rank all responses by relevance using BM25 scoring.
+            </p>
+
+            {/* Input row */}
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && runFocusedSearch()}
+                placeholder='e.g. "queue", "staff", "cleanliness"'
+                className="flex-1 px-3 py-2 text-sm border border-border rounded-lg outline-none focus:border-brand-blue bg-white text-text-primary placeholder:text-text-muted"
+              />
+              <button
+                onClick={runFocusedSearch}
+                disabled={!searchQuery.trim() || searchLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-brand-blue text-white text-xs font-medium rounded-lg hover:bg-brand-blue/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {searchLoading
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Expanding…</>
+                  : <><Search className="w-3.5 h-3.5" /> Search</>}
+              </button>
+            </div>
+
+            {/* Expanded terms chips */}
+            {expandedTerms.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-4 p-3 bg-blue-50 rounded-lg">
+                <span className="text-[11px] text-blue-600 font-medium self-center mr-1">Searching for:</span>
+                {expandedTerms.map(term => (
+                  <span
+                    key={term}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-blue-200 rounded-full text-[11px] text-blue-700"
+                  >
+                    {term}
+                    <button onClick={() => removeTerm(term)} className="hover:text-red-500 transition-colors">
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Error */}
+            {searchError && (
+              <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg mb-3">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <p className="text-xs text-red-700">{searchError}</p>
+              </div>
+            )}
+
+            {/* Results */}
+            {searchResults !== null && (
+              <div>
+                <p className="text-xs text-text-secondary mb-3">
+                  {searchResults.length === 0
+                    ? 'No matching responses found.'
+                    : <><span className="font-semibold text-text-primary">{searchResults.length}</span> responses ranked by relevance</>}
+                </p>
+                <div className="divide-y divide-border">
+                  {searchResults.slice(0, 50).map(({ text, idx, normScore }) => (
+                    <div key={idx} className="py-3 flex items-start gap-3">
+                      {/* Relevance bar */}
+                      <div className="w-1 self-stretch rounded-full bg-slate-100 relative shrink-0">
+                        <div
+                          className="absolute bottom-0 left-0 w-full rounded-full bg-brand-blue transition-all"
+                          style={{ height: `${Math.round(normScore * 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-text-primary leading-relaxed">
+                          {highlightText(text, expandedTerms)}
+                        </p>
+                        <span className="text-[10px] text-text-muted mt-0.5 block">
+                          row {idx + 1} · relevance {Math.round(normScore * 100)}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {searchResults.length > 50 && (
+                  <p className="text-[11px] text-text-muted mt-3">
+                    Showing top 50 of {searchResults.length} matches.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Idle state */}
+            {searchResults === null && !searchLoading && (
+              <div className="flex flex-col items-center justify-center py-8 gap-2 text-text-secondary">
+                <Search className="w-7 h-7 opacity-20" />
+                <p className="text-xs opacity-60">Enter a topic above to search</p>
+              </div>
+            )}
           </div>
 
           {/* Row explorer */}

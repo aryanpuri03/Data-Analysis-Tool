@@ -133,6 +133,117 @@ export function scoreSentiment(text) {
   return { score, label, pos, neg }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// BM25 SEARCH ENGINE
+// ─────────────────────────────────────────────────────────────────
+
+const BM25_K1 = 1.5
+const BM25_B  = 0.75
+
+/**
+ * Lightweight suffix stemmer — maps morphological variants to a root.
+ * e.g. "queuing" → "queu", "delays" → "delay", "waiting" → "wait"
+ * Used to boost matches between query terms and document tokens.
+ */
+export function stemWord(word) {
+  const w = String(word || '').toLowerCase().trim()
+  if (w.length <= 3) return w
+  if (w.endsWith('ication') && w.length > 9) return w.slice(0, -7) + 'y'
+  if (w.endsWith('iness')   && w.length > 7) return w.slice(0, -5) + 'y'
+  if (w.endsWith('ation')   && w.length > 7) return w.slice(0, -5)
+  if (w.endsWith('ness')    && w.length > 6) return w.slice(0, -4)
+  if (w.endsWith('ment')    && w.length > 6) return w.slice(0, -4)
+  if (w.endsWith('tion')    && w.length > 6) return w.slice(0, -4)
+  if (w.endsWith('ity')     && w.length > 5) return w.slice(0, -3)
+  if (w.endsWith('ful')     && w.length > 5) return w.slice(0, -3)
+  if (w.endsWith('ous')     && w.length > 5) return w.slice(0, -3)
+  if (w.endsWith('ing')     && w.length > 6) return w.slice(0, -3)
+  if (w.endsWith('ies')     && w.length > 5) return w.slice(0, -3) + 'y'
+  if (w.endsWith('ied')     && w.length > 5) return w.slice(0, -3) + 'y'
+  if (w.endsWith('ves')     && w.length > 5) return w.slice(0, -3) + 'f'
+  if (w.endsWith('ed')      && w.length > 5) return w.slice(0, -2)
+  if (w.endsWith('er')      && w.length > 5) return w.slice(0, -2)
+  if (w.endsWith('ly')      && w.length > 5) return w.slice(0, -2)
+  if (w.endsWith('s') && !w.endsWith('ss') && w.length > 4) return w.slice(0, -1)
+  return w
+}
+
+/**
+ * Build a BM25 corpus index from an array of text strings.
+ * Call once per column; cache the result in useMemo.
+ * @param {string[]} texts
+ * @returns {{ tokenizedDocs: string[][], N: number, avgdl: number, df: object }}
+ */
+export function buildBM25Index(texts) {
+  const tokenizedDocs = texts.map(t =>
+    String(t || '').toLowerCase().split(/[^a-z]+/).filter(w => w.length >= 2)
+  )
+  const N     = texts.length
+  const avgdl = tokenizedDocs.reduce((s, d) => s + d.length, 0) / Math.max(N, 1)
+
+  // Document frequency: index both surface form and stem
+  const df = {}
+  for (const doc of tokenizedDocs) {
+    const seen = new Set()
+    for (const t of doc) {
+      if (!seen.has(t)) { df[t] = (df[t] || 0) + 1; seen.add(t) }
+      const s = stemWord(t)
+      if (s !== t && !seen.has(s)) { df[s] = (df[s] || 0) + 1; seen.add(s) }
+    }
+  }
+
+  return { tokenizedDocs, N, avgdl, df }
+}
+
+function bm25DocScore(docTokens, queryTerms, N, avgdl, df) {
+  const dl = docTokens.length
+  // Build term-frequency map including stem variants
+  const tfMap = {}
+  for (const t of docTokens) {
+    tfMap[t] = (tfMap[t] || 0) + 1
+    const s = stemWord(t)
+    if (s !== t) tfMap[s] = (tfMap[s] || 0) + 0.8
+  }
+
+  let score = 0
+  for (const term of queryTerms) {
+    const t   = term.toLowerCase()
+    const tf  = (tfMap[t] || 0) + (tfMap[stemWord(t)] || 0) * 0.5
+    if (tf === 0) continue
+    const docFreq  = df[t] || df[stemWord(t)] || 0
+    const idf      = Math.log((N - docFreq + 0.5) / (docFreq + 0.5) + 1)
+    const tfNorm   = (tf * (BM25_K1 + 1)) / (tf + BM25_K1 * (1 - BM25_B + BM25_B * dl / avgdl))
+    score += idf * tfNorm
+  }
+  return score
+}
+
+/**
+ * Search texts with BM25 using an array of expanded query terms.
+ * @param {string[]} expandedTerms   — from AI query expansion
+ * @param {string[]} texts           — raw text strings
+ * @param {object}   index           — from buildBM25Index(texts)
+ * @returns {{ text: string, idx: number, score: number, normScore: number }[]}
+ */
+export function bm25Search(expandedTerms, texts, index) {
+  const { tokenizedDocs, N, avgdl, df } = index
+  const qTerms = expandedTerms.map(t => t.toLowerCase().trim()).filter(Boolean)
+
+  const results = texts
+    .map((text, idx) => ({
+      text,
+      idx,
+      score: bm25DocScore(tokenizedDocs[idx], qTerms, N, avgdl, df),
+    }))
+    .filter(r => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+
+  const maxScore = results[0]?.score || 1
+  return results.map(r => ({ ...r, normScore: r.score / maxScore }))
+}
+
+// ─────────────────────────────────────────────────────────────────
+
 /**
  * Analyse a text column from the dataset.
  * @param {object[]} rows
