@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import {
   Upload, LayoutDashboard, Wand2, Sigma,
-  Filter, BarChart3, Table2, GitMerge, TrendingUp, AlertTriangle,
+  Filter, BarChart3, Table2, GitMerge, TrendingUp, AlertTriangle, Type,
   Sparkles, Code2, FileText, Layers, MessageSquare,
 } from 'lucide-react'
 
@@ -25,6 +25,7 @@ const navGroups = [
       { to: '/correlations', label: 'Correlations',  icon: GitMerge },
       { to: '/forecast',     label: 'Forecasting',   icon: TrendingUp },
       { to: '/anomalies',    label: 'Anomalies',     icon: AlertTriangle },
+      { to: '/text-analysis', label: 'Text Analysis', icon: Type },
     ],
   },
   {

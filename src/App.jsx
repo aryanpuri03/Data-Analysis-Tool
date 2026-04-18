@@ -19,6 +19,7 @@ const AnomalyExplainer = lazy(() => import('./modules/anomaly/AnomalyExplainer')
 const DataChat = lazy(() => import('./modules/chat/DataChat'))
 const CodeGenerator = lazy(() => import('./modules/codegen/CodeGenerator'))
 const IconLibrary = lazy(() => import('./modules/icons/IconLibrary'))
+const TextAnalysis = lazy(() => import('./modules/textanalysis/TextAnalysis'))
 
 function PageLoader() {
   return (
@@ -50,6 +51,7 @@ export default function App() {
               <Route path="/forecast" element={<Forecasting />} />
               <Route path="/filter"   element={<NLFilter />} />
               <Route path="/anomalies" element={<AnomalyExplainer />} />
+              <Route path="/text-analysis" element={<TextAnalysis />} />
               <Route path="/codegen"   element={<CodeGenerator />} />
               <Route path="/icons"    element={<IconLibrary />} />
 <Route path="*"         element={<Navigate to="/upload" replace />} />
