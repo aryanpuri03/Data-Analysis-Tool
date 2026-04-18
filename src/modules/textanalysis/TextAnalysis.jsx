@@ -5,8 +5,9 @@ import {
 } from 'recharts'
 import {
   Type, Sparkles, Loader2, AlertCircle, RefreshCw, Search, X,
-  CheckCircle2, XCircle,
+  CheckCircle2, XCircle, Download,
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { useData } from '../../context/DataContext'
 import { renderMarkdown } from '../../utils/renderMarkdown'
 import { analyseColumn, buildBM25Index, bm25Search, extractKeywords, extractPhrases, scoreSentiment } from '../../utils/textAnalysisUtils'
@@ -362,6 +363,35 @@ Be specific and reference actual phrases from the data where relevant.`
     if (!showOnlyRelevant || !relevanceSummary) return base
     return base.filter(r => relevanceVerdicts[r.idx]?.relevant === true)
   }, [searchResults, showOnlyRelevant, relevanceVerdicts, relevanceSummary])
+
+  function exportResults() {
+    if (!searchResults || !focusedAnalysis) return
+    const rows = searchResults.slice(0, 50).map(({ text, idx, normScore }) => {
+      const verdict   = relevanceVerdicts[idx]
+      const siIdx     = searchResults.findIndex(r => r.idx === idx)
+      const sentiment = focusedAnalysis.sentiments[siIdx]
+      return {
+        'Row #':         idx + 1,
+        'Response':      text,
+        'Match %':       Math.round(normScore * 100),
+        'Sentiment':     sentiment?.label || '',
+        'Sent. Score':   sentiment ? (sentiment.score >= 0 ? '+' : '') + sentiment.score.toFixed(2) : '',
+        'Relevant':      verdict ? (verdict.relevant ? 'Yes' : 'No') : 'Not reviewed',
+        'AI Reason':     verdict?.reason || '',
+        'Search Query':  searchQuery,
+      }
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    // Auto-width columns
+    const colWidths = Object.keys(rows[0] || {}).map(k => ({
+      wch: Math.max(k.length, ...rows.map(r => String(r[k] || '').length).slice(0, 30)),
+    }))
+    ws['!cols'] = colWidths
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Topic Results')
+    const filename = `topic-search-${searchQuery.replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0, 40)}.xlsx`
+    XLSX.writeFile(wb, filename)
+  }
 
   // ── Empty states ──
   if (!dataset) {
@@ -750,18 +780,26 @@ Be specific and reference actual phrases from the data where relevant.`
                         </span>
                       )}
                     </div>
-                    {relevanceSummary && !relevanceLoading && (
+                    <div className="flex items-center gap-2">
+                      {relevanceSummary && !relevanceLoading && (
+                        <button
+                          onClick={() => setShowOnlyRelevant(v => !v)}
+                          className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
+                            showOnlyRelevant
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'text-text-secondary border-border hover:border-emerald-500 hover:text-emerald-600'
+                          }`}
+                        >
+                          {showOnlyRelevant ? 'Showing relevant only' : 'Show relevant only'}
+                        </button>
+                      )}
                       <button
-                        onClick={() => setShowOnlyRelevant(v => !v)}
-                        className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
-                          showOnlyRelevant
-                            ? 'bg-emerald-600 text-white border-emerald-600'
-                            : 'text-text-secondary border-border hover:border-emerald-500 hover:text-emerald-600'
-                        }`}
+                        onClick={exportResults}
+                        className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md border border-border text-text-secondary hover:border-brand-blue hover:text-brand-blue transition-colors"
                       >
-                        {showOnlyRelevant ? 'Showing relevant only' : 'Show relevant only'}
+                        <Download className="w-3 h-3" /> Export Excel
                       </button>
-                    )}
+                    </div>
                   </div>
 
                   <div className="divide-y divide-border">

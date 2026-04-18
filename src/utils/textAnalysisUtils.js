@@ -251,8 +251,10 @@ export function scoreSentiment(text) {
 // BM25 SEARCH ENGINE
 // ─────────────────────────────────────────────────────────────────
 
-const BM25_K1 = 1.5
-const BM25_B  = 0.75
+const BM25_K1          = 1.5
+const BM25_B           = 0.75
+const PROXIMITY_WINDOW = 15   // tokens — co-occurrence within this range gets a score boost
+const MIN_NORM_SCORE   = 0.06 // drop results in the weakest 6% tail
 
 /**
  * Lightweight suffix stemmer — maps morphological variants to a root.
@@ -309,27 +311,67 @@ export function buildBM25Index(texts) {
   return { tokenizedDocs, N, avgdl, df }
 }
 
+/**
+ * Score a single document against query terms.
+ * Returns { score, matchedTermCount } so the caller can apply coverage filtering.
+ * Includes a proximity bonus: if two different matched query terms appear within
+ * PROXIMITY_WINDOW tokens of each other the score is boosted by 30%.
+ */
 function bm25DocScore(docTokens, queryTerms, N, avgdl, df) {
   const dl = docTokens.length
-  // Build term-frequency map including stem variants
-  const tfMap = {}
-  for (const t of docTokens) {
+
+  // Build TF map + position lists (surface form and stem)
+  const tfMap  = {}
+  const posMap = {}  // term → [positions]
+  for (let i = 0; i < docTokens.length; i++) {
+    const t = docTokens[i]
     tfMap[t] = (tfMap[t] || 0) + 1
+    ;(posMap[t] = posMap[t] || []).push(i)
     const s = stemWord(t)
-    if (s !== t) tfMap[s] = (tfMap[s] || 0) + 0.8
+    if (s !== t) {
+      tfMap[s] = (tfMap[s] || 0) + 0.8
+      ;(posMap[s] = posMap[s] || []).push(i)
+    }
   }
 
   let score = 0
+  const matchedQTerms = []  // normalised forms of matched query terms
+
   for (const term of queryTerms) {
-    const t   = term.toLowerCase()
-    const tf  = (tfMap[t] || 0) + (tfMap[stemWord(t)] || 0) * 0.5
+    const t     = term.toLowerCase()
+    const stemT = stemWord(t)
+    const tf    = (tfMap[t] || 0) + (tfMap[stemT] || 0) * 0.5
     if (tf === 0) continue
-    const docFreq  = df[t] || df[stemWord(t)] || 0
-    const idf      = Math.log((N - docFreq + 0.5) / (docFreq + 0.5) + 1)
-    const tfNorm   = (tf * (BM25_K1 + 1)) / (tf + BM25_K1 * (1 - BM25_B + BM25_B * dl / avgdl))
+    matchedQTerms.push(t)
+    const docFreq = df[t] || df[stemT] || 0
+    const idf     = Math.log((N - docFreq + 0.5) / (docFreq + 0.5) + 1)
+    const tfNorm  = (tf * (BM25_K1 + 1)) / (tf + BM25_K1 * (1 - BM25_B + BM25_B * dl / avgdl))
     score += idf * tfNorm
   }
-  return score
+
+  // Proximity bonus — find all positions where matched query terms appear,
+  // then check if any two *different* terms sit within PROXIMITY_WINDOW tokens
+  if (matchedQTerms.length >= 2 && score > 0) {
+    const hits = []
+    for (let qi = 0; qi < matchedQTerms.length; qi++) {
+      const qt   = matchedQTerms[qi]
+      const stem = stemWord(qt)
+      const positions = [...(posMap[qt] || []), ...(posMap[stem] || [])]
+      for (const pos of positions) hits.push({ pos, qi })
+    }
+    // Sort by position for efficient window scan
+    hits.sort((a, b) => a.pos - b.pos)
+    let proximity = false
+    outer: for (let a = 0; a < hits.length; a++) {
+      for (let b = a + 1; b < hits.length; b++) {
+        if (hits[b].pos - hits[a].pos > PROXIMITY_WINDOW) break
+        if (hits[b].qi !== hits[a].qi) { proximity = true; break outer }
+      }
+    }
+    if (proximity) score *= 1.3
+  }
+
+  return { score, matchedTermCount: matchedQTerms.length }
 }
 
 /**
@@ -343,17 +385,24 @@ export function bm25Search(expandedTerms, texts, index) {
   const { tokenizedDocs, N, avgdl, df } = index
   const qTerms = expandedTerms.map(t => t.toLowerCase().trim()).filter(Boolean)
 
-  const results = texts
-    .map((text, idx) => ({
-      text,
-      idx,
-      score: bm25DocScore(tokenizedDocs[idx], qTerms, N, avgdl, df),
-    }))
-    .filter(r => r.score > 0)
+  // Minimum distinct query terms that must match — prevents single-word false positives
+  // for longer queries. E.g. 20-term expansion requires at least 2 to match.
+  const minCoverage = qTerms.length >= 5 ? 2 : 1
+
+  const raw = texts
+    .map((text, idx) => {
+      const { score, matchedTermCount } = bm25DocScore(tokenizedDocs[idx], qTerms, N, avgdl, df)
+      return { text, idx, score, matchedTermCount }
+    })
+    .filter(r => r.score > 0 && r.matchedTermCount >= minCoverage)
     .sort((a, b) => b.score - a.score)
 
-  const maxScore = results[0]?.score || 1
-  return results.map(r => ({ ...r, normScore: r.score / maxScore }))
+  if (!raw.length) return []
+  const maxScore = raw[0].score
+
+  return raw
+    .map(r => ({ text: r.text, idx: r.idx, score: r.score, normScore: r.score / maxScore }))
+    .filter(r => r.normScore >= MIN_NORM_SCORE)
 }
 
 // ─────────────────────────────────────────────────────────────────
