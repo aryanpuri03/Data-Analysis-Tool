@@ -28,6 +28,12 @@
   --color-border: #E2E8F0;
   --color-border-strong: #CBD5E1;
 
+  /* Extended brand palette */
+  --color-brand-navy: #001E4C;
+  --color-brand-mid: #0052AA;
+  --color-accent-gold: #C8972B;
+  --color-surface-2: #EEF2F7;
+
   /* Backwards-compat aliases */
   --color-card-bg: #FFFFFF;
   --color-content-bg: #F1F5F9;
@@ -69,6 +75,24 @@ body {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ── Sidebar gradient ── */
+.sidebar-gradient {
+  background: linear-gradient(180deg, #0D1B35 0%, #0F172A 100%);
+}
+
+/* ── Card shadows ── */
+.card-shadow {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+}
+.card-elevated {
+  box-shadow: 0 4px 16px rgba(0,31,71,0.10), 0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* ── Header shadow ── */
+.header-shadow {
+  box-shadow: 0 1px 0 #E2E8F0, 0 2px 8px rgba(0,31,71,0.05);
 }
 
 /* ── Skeleton shimmer ── */

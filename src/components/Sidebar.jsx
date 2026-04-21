@@ -43,7 +43,6 @@ const navGroups = [
       { to: '/icons', label: 'Icon Library', icon: Layers },
     ],
   },
-
 ]
 
 export default function Sidebar() {
@@ -51,24 +50,44 @@ export default function Sidebar() {
   const hasData = !!dataset
 
   return (
-    <aside className="fixed top-0 left-0 h-screen w-56 flex flex-col z-50 bg-sidebar-bg">
+    <aside className="sidebar-gradient fixed top-0 left-0 h-screen w-64 flex flex-col z-50">
       {/* Brand */}
-      <div className="px-4 pt-5 pb-4 shrink-0 border-b border-white/[0.07]">
-        <div className="flex items-center gap-2.5">
-          <div className="w-6 h-6 rounded bg-brand-blue flex items-center justify-center shrink-0">
-            <span className="text-white text-[10px] font-bold leading-none select-none">EDI</span>
+      <div className="px-5 pt-6 pb-5 shrink-0 border-b border-white/[0.08]">
+        <div className="flex items-center gap-3">
+          {/* Logo mark */}
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: 'linear-gradient(135deg, #00A3E0 0%, #0079B8 100%)' }}
+          >
+            <span className="text-white text-[11px] font-bold leading-none select-none tracking-tight">EDI</span>
           </div>
-          <span className="text-white text-[13px] font-semibold tracking-tight">Data Analysis Tool</span>
+          {/* Brand text */}
+          <div className="min-w-0">
+            <p className="text-white text-[13px] font-semibold leading-tight tracking-tight">Business Analytics</p>
+            <p className="text-white/50 text-[11px] leading-tight mt-0.5">Data Analysis Tool</p>
+          </div>
         </div>
-        <p className="text-[11px] text-white/30 mt-1 ml-8">Edinburgh Airport</p>
+        {/* Sub-brand */}
+        <div className="mt-3 flex items-center gap-2 ml-12">
+          <span
+            className="inline-block w-3 h-px"
+            style={{ background: '#00A3E0', opacity: 0.5 }}
+          />
+          <p className="text-[10px] font-medium tracking-widest uppercase" style={{ color: '#00A3E0', opacity: 0.7 }}>
+            Edinburgh Airport
+          </p>
+        </div>
       </div>
 
       {/* Dataset status pill */}
-      <div className="px-3 py-2.5 shrink-0 border-b border-white/[0.05]">
-        <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-white/[0.04]">
+      <div className="px-4 py-3 shrink-0 border-b border-white/[0.05]">
+        <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/[0.05] border border-white/[0.06]">
           <span
-            className="w-1.5 h-1.5 rounded-full shrink-0"
-            style={{ background: hasData ? '#10B981' : '#334155' }}
+            className="w-2 h-2 rounded-full shrink-0"
+            style={{
+              background: hasData ? '#10B981' : '#334155',
+              boxShadow: hasData ? '0 0 6px rgba(16,185,129,0.5)' : 'none',
+            }}
           />
           <span className="text-[11px] truncate" style={{ color: hasData ? '#6EE7B7' : '#475569' }}>
             {hasData ? (fileName || 'Dataset loaded') : 'No data loaded'}
@@ -77,10 +96,11 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-2.5 py-3 overflow-y-auto space-y-4">
+      <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-5">
         {navGroups.map(({ label, items }) => (
           <div key={label}>
-            <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/25 select-none">
+            <p className="px-2 mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] select-none"
+              style={{ color: 'rgba(255,255,255,0.22)' }}>
               {label}
             </p>
             <div className="space-y-0.5">
@@ -89,11 +109,16 @@ export default function Sidebar() {
                   key={to}
                   to={to}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-[13px] transition-colors duration-150 cursor-pointer ${
+                    `flex items-center gap-2.5 py-[7px] rounded-md text-[13px] transition-all duration-150 cursor-pointer ${
                       isActive
-                        ? 'bg-brand-blue text-white font-medium'
-                        : 'text-white/40 hover:bg-white/[0.05] hover:text-white/80'
+                        ? 'text-white font-medium pl-2 pr-3 border-l-[3px] border-brand-accent'
+                        : 'text-white/40 hover:text-white/80 px-2.5 hover:bg-white/[0.05]'
                     }`
+                  }
+                  style={({ isActive }) =>
+                    isActive
+                      ? { background: 'rgba(0,63,135,0.65)' }
+                      : {}
                   }
                 >
                   <Icon className="w-[15px] h-[15px] shrink-0" />
@@ -106,8 +131,9 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-4 py-3 shrink-0 border-t border-white/[0.07]">
-        <p className="text-[10px] text-white/20">v1.0 · Internal Tool</p>
+      <div className="px-5 py-4 shrink-0 border-t border-white/[0.07]">
+        <p className="text-[11px] italic" style={{ color: 'rgba(255,255,255,0.28)' }}>By Aryan Puri</p>
+        <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.16)' }}>v1.0 · Internal Platform</p>
       </div>
     </aside>
   )
