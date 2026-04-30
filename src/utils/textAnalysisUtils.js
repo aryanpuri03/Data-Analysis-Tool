@@ -111,32 +111,46 @@ const INTENSIFIERS = new Set([
   'terribly','awfully','dreadfully','horribly','so','such','quite','rather',
 ])
 
+// ── Contrast/concession words — boost the clause that follows by 1.5x ──
+// "The staff were lovely BUT the queues were horrendous" → horrendous weighted 1.5x
+const CONTRAST_WORDS = new Set([
+  'but','however','although','though','yet','despite','whereas',
+  'unfortunately','sadly','regrettably','frustratingly','annoyingly',
+  'nevertheless','nonetheless','except','still','disappointingly',
+])
+
 // ── Weighted positive words (2 = strong, 1 = normal) ──
 const POSITIVE_WEIGHTS = {
-  // Strong (2)
+  // Strong positive (2)
   excellent:2, outstanding:2, exceptional:2, fantastic:2, amazing:2, superb:2,
   brilliant:2, perfect:2, wonderful:2, incredible:2, phenomenal:2, magnificent:2,
-  extraordinary:2, immaculate:2, spotless:2, impeccable:2, flawless:2,
-  // Normal (1)
+  extraordinary:2, immaculate:2, spotless:2, impeccable:2, flawless:2, faultless:2,
+  delightful:2, spectacular:2,
+  // Normal positive (1)
   good:1, great:1, nice:1, happy:1, pleased:1, satisfied:1, love:1, loved:1,
   helpful:1, friendly:1, efficient:1, easy:1, smooth:1, clean:1, comfortable:1,
   fast:1, quick:1, convenient:1, pleasant:1, professional:1, polite:1, welcoming:1,
-  clear:1, safe:1, lovely:1, beautiful:1, awesome:1, delightful:1, refreshing:1,
-  spacious:1, organized:1, organised:1, modern:1, bright:1, tasty:1, fresh:1,
-  generous:1, impressed:1, enjoyed:1, enjoy:1, recommend:1, positive:1, prompt:1,
-  attentive:1, courteous:1, well:1, better:1, improved:1, improving:1, best:1,
-  warm:1, welcoming:1, relaxing:1, stress:0, hassle:0, smooth:1, seamless:1,
-  lovely:1, reasonable:1, affordable:1, value:1, worth:1, tidy:1, neat:1,
-  responsive:1, reliable:1, punctual:1, comfortable:1, enjoyable:1, impressive:1,
+  clear:1, safe:1, lovely:1, beautiful:1, awesome:1, refreshing:1,
+  spacious:1, organised:1, organized:1, modern:1, bright:1, tasty:1, fresh:1,
+  generous:1, impressed:1, enjoyed:1, enjoy:1, recommend:1, prompt:1,
+  attentive:1, courteous:1, improved:1, improving:1, best:1, seamless:1,
+  warm:1, relaxing:1, reasonable:1, affordable:1, value:1, worth:1, tidy:1, neat:1,
+  responsive:1, reliable:1, punctual:1, enjoyable:1, impressive:1, positive:1,
+  // Airport / CX specific
+  swift:1, painless:1, accessible:1, intuitive:1, streamlined:1, informative:1,
+  accommodating:1, proactive:1, cheerful:1, gleaming:1, sparkling:1,
+  adequate:1, acceptable:1, sufficient:1, straightforward:1, delicious:1,
+  surprised:1, welldressed:1, spotless:2, immaculate:2,
 }
 
 // ── Weighted negative words (2 = strong, 1 = normal) ──
 const NEGATIVE_WEIGHTS = {
-  // Strong (2)
+  // Strong negative (2)
   terrible:2, horrible:2, awful:2, dreadful:2, disgusting:2, appalling:2,
   atrocious:2, deplorable:2, abysmal:2, pathetic:2, outrageous:2, unacceptable:2,
-  shocking:2, disgraceful:2, horrendous:2,
-  // Normal (1)
+  shocking:2, disgraceful:2, horrendous:2, diabolical:2, shambles:2, filthy:2,
+  disgusted:2, scandalous:2, catastrophic:2, nightmare:2,
+  // Normal negative (1)
   bad:1, poor:1, disappointing:1, disappointed:1, unpleasant:1, rude:1,
   dirty:1, broken:1, frustrated:1, frustrating:1, annoying:1, irritating:1,
   unhelpful:1, difficult:1, confusing:1, confused:1, uncomfortable:1, unfriendly:1,
@@ -144,10 +158,13 @@ const NEGATIVE_WEIGHTS = {
   overpriced:1, unfair:1, late:1, cancelled:1, ignored:1,
   insufficient:1, inadequate:1, unprofessional:1, unclean:1, overcrowded:1,
   cramped:1, noisy:1, expensive:1, useless:1, waste:1, wasted:1, worst:1,
-  slow:1, delayed:1, overcrowded:1, smelly:1, faulty:1, broken:1,
-  ripped:1, scam:1, avoid:1, never:0,  // never handled by negation
+  slow:1, delayed:1, smelly:1, faulty:1, ripped:1, scam:1, avoid:1,
   long:1, wait:1, queue:1, delay:1, crowded:1, cold:1, limited:1,
-  // context-dependent but leaning negative in airport CX
+  // Airport / CX specific
+  understaffed:1, dismissive:1, misleading:1, inaccurate:1, tatty:1, scruffy:1,
+  dated:1, worn:1, tired:1, grubby:1, intimidating:1, inconvenient:1,
+  freezing:1, sweltering:1, chaotic:1, understaffed:1, disorganised:1, disorganized:1,
+  unwelcoming:1, neglected:1, disgrace:2, embarrassing:1, unacceptable:2,
 }
 
 // ── Multi-word sentiment phrases (checked before token-level scoring) ──
@@ -160,6 +177,18 @@ const NEGATIVE_PHRASES = [
   'not pleasant','not comfortable','not working','out of order','not open',
   'no seating','no seats','nowhere to sit','no wifi','no water','no food',
   'wasted time','long wait','long queue','ages to','waited ages',
+  // Airport-specific negatives
+  'missed my flight','missed the flight','missed our flight',
+  'no staff','no one available','no one helped','no assistance',
+  'hard to find','couldnt find','could not find','difficult to find',
+  'no signage','poor signage','no directions','confusing layout',
+  'no information','lack of information','not informed',
+  'completely wrong','totally wrong','waste of money','will not return',
+  'wont be back','never again','absolutely terrible','absolutely awful',
+  'can not recommend','cannot recommend','would not recommend',
+  'not disabled','not accessible','not wheelchair',
+  'check in issue','check in problem','checking in problem',
+  'too hot','too cold','boiling hot','freezing cold',
 ]
 
 const POSITIVE_PHRASES = [
@@ -169,6 +198,13 @@ const POSITIVE_PHRASES = [
   'really enjoyed','no wait','no queue','no delay','no problem','no issues',
   'ran smoothly','went smoothly','exceeded expectations','above and beyond',
   'value for money','good value',
+  // Airport-specific positives
+  'stress free','no hassle','easy to navigate','easy to find','clearly signed',
+  'really easy','quick and easy','fast and efficient','friendly staff',
+  'helpful staff','great staff','lovely staff','really helpful',
+  'pleasantly surprised','couldnt fault','nothing to fault','no complaints',
+  'would definitely recommend','will definitely return','best airport',
+  'very impressed','really impressed','absolutely loved','totally painless',
 ]
 
 /**
@@ -178,8 +214,16 @@ const POSITIVE_PHRASES = [
  * @returns {{ score: number, label: 'positive'|'negative'|'neutral', pos: number, neg: number }}
  */
 export function scoreSentiment(text) {
-  const raw = String(text || '').toLowerCase()
-  const tokens = raw.split(/[^a-z']+/).filter(w => w.length >= 1)
+  const raw      = String(text || '').toLowerCase()
+  const original = String(text || '')
+  const tokens   = raw.split(/[^a-z']+/).filter(w => w.length >= 1)
+
+  // ── Pre-scan: detect ALL-CAPS words (TERRIBLE → 1.4x amplification) ──
+  const capsWords = new Set()
+  original.split(/\s+/).forEach(w => {
+    const clean = w.replace(/[^a-zA-Z]/g, '')
+    if (clean.length >= 3 && clean === clean.toUpperCase()) capsWords.add(clean.toLowerCase())
+  })
 
   // ── Phase 1: phrase-level scoring ──
   let phraseScore = 0
@@ -190,18 +234,28 @@ export function scoreSentiment(text) {
     if (raw.includes(phrase)) phraseScore += 1.5
   }
 
-  // ── Phase 2: token-level scoring with negation + intensifiers ──
+  // ── Phase 2: token-level scoring with negation + intensifiers + contrast ──
   let pos = 0, neg = 0
-  let negWindow = 0   // counts down; sentiment word applies negation while > 0
-  let amplify   = 1.0 // multiplier from intensifier
+  let negWindow      = 0   // negation applies to next sentiment word within window
+  let amplify        = 1.0 // intensifier multiplier
+  let contrastWindow = 0   // contrast word boosts following clause by 1.5x
 
   for (const t of tokens) {
-    // Normalise contractions: "wasn't" → "wasnt"
-    const tok = t.replace(/'/g, '')
+    const tok            = t.replace(/'/g, '')
+    const capsMultiplier = capsWords.has(tok) ? 1.4 : 1.0
 
     if (NEGATION_WORDS.has(tok)) {
-      negWindow = 4   // negation applies to the next sentiment word within 4 tokens
-      amplify = 1.0
+      negWindow = 4
+      amplify   = 1.0
+      continue
+    }
+
+    if (CONTRAST_WORDS.has(tok)) {
+      contrastWindow = 8
+      // Sentiment-charged contrast words (unfortunately, sadly…) add a mild push
+      if (['unfortunately','sadly','regrettably','frustratingly','annoyingly','disappointingly'].includes(tok)) {
+        neg += 0.3
+      }
       continue
     }
 
@@ -210,36 +264,37 @@ export function scoreSentiment(text) {
       continue
     }
 
+    const contrastBoost = contrastWindow > 0 ? 1.5 : 1.0
+    if (contrastWindow > 0) contrastWindow--
+
     const posW = POSITIVE_WEIGHTS[tok]
     const negW = NEGATIVE_WEIGHTS[tok]
 
     if (posW && posW > 0) {
-      const val = posW * amplify
-      if (negWindow > 0) {
-        neg += val          // "not good" → negative
-      } else {
-        pos += val
-      }
-      negWindow = 0         // consumed
-      amplify = 1.0
+      const val = posW * amplify * contrastBoost * capsMultiplier
+      if (negWindow > 0) { neg += val }       // "not good" → negative
+      else               { pos += val }
+      negWindow = 0; amplify = 1.0
     } else if (negW && negW > 0) {
-      const val = negW * amplify
-      if (negWindow > 0) {
-        pos += val * 0.4    // "not bad" → weakly positive
-      } else {
-        neg += val
-      }
-      negWindow = 0
-      amplify = 1.0
+      const val = negW * amplify * contrastBoost * capsMultiplier
+      if (negWindow > 0) { pos += val * 0.4 } // "not bad" → weakly positive
+      else               { neg += val }
+      negWindow = 0; amplify = 1.0
     } else {
-      // Non-sentiment word: tick down the negation window
       if (negWindow > 0) negWindow--
     }
   }
 
+  // ── Phase 3: exclamation mark boost (amplifies the dominant direction) ──
+  const exclamCount = (original.match(/!/g) || []).length
+  if (exclamCount > 0) {
+    const boost = Math.min(exclamCount * 0.2, 0.6)
+    if      (pos > neg) pos += boost
+    else if (neg > pos) neg += boost
+  }
+
   // ── Combine and normalise ──
   const rawScore  = (pos - neg) + phraseScore
-  // Normalise by sqrt of length so longer responses don't dilute short strong ones
   const normDenom = Math.max(Math.sqrt(tokens.length), 2)
   const score     = rawScore / normDenom
 
@@ -403,6 +458,38 @@ export function bm25Search(expandedTerms, texts, index) {
   return raw
     .map(r => ({ text: r.text, idx: r.idx, score: r.score, normScore: r.score / maxScore }))
     .filter(r => r.normScore >= MIN_NORM_SCORE)
+}
+
+// ─────────────────────────────────────────────────────────────────
+
+// ── Sentiment intent signals ──────────────────────────────────────────────────
+const NEG_INTENT_RE = /\b(negative|bad|complaint|complaints|complain|complaining|problem|problems|issue|issues|poor|worst|terrible|awful|horrible|disgusting|appalling|dissatisfied|unhappy|frustrated|frustration|criticism|criticisms|concern|concerns|dislike|disliked|wrong|fail|failed|failure|disappointment|disappointed|disappointing|unhelpful|rude|dirty|broken|gripe|gripes)\b/i
+const POS_INTENT_RE = /\b(positive|good|great|praise|praises|praising|compliment|compliments|happy|satisfied|satisfaction|pleased|love|loved|like|liked|best|excellent|amazing|brilliant|fantastic|wonderful|recommend|recommended|enjoyed|enjoy|cheerful|helpful|friendly)\b/i
+
+// Words to strip when extracting the core topic from a sentiment-qualified query
+const STRIP_FROM_TOPIC = /\b(negative|positive|bad|good|great|complaint|complaints|complain|complaining|problem|problems|issue|issues|poor|worst|terrible|awful|horrible|appalling|dissatisfied|unhappy|frustrated|frustration|criticism|criticisms|concern|concerns|dislike|disliked|wrong|fail|failed|failure|disappointment|disappointed|disappointing|praise|praises|praising|compliment|compliments|happy|satisfied|satisfaction|pleased|love|loved|like|liked|best|excellent|amazing|brilliant|fantastic|wonderful|recommend|recommended|enjoyed|enjoy|comments?|feedback|about|regarding|on|for|from|with|customers?|passengers?|people)\b/gi
+
+/**
+ * Parse a natural-language search query to extract a sentiment intent and clean topic.
+ * e.g. "negative comments about check in" → { sentimentIntent: 'negative', topic: 'check in' }
+ * e.g. "positive feedback on food quality"  → { sentimentIntent: 'positive', topic: 'food quality' }
+ * e.g. "kids softplay area"                 → { sentimentIntent: null,       topic: 'kids softplay area' }
+ *
+ * @param {string} query
+ * @returns {{ sentimentIntent: 'positive'|'negative'|null, topic: string }}
+ */
+export function parseQueryIntent(query) {
+  const q = query.trim()
+  let sentimentIntent = null
+  if (NEG_INTENT_RE.test(q)) sentimentIntent = 'negative'
+  else if (POS_INTENT_RE.test(q)) sentimentIntent = 'positive'
+
+  const topic = q
+    .replace(STRIP_FROM_TOPIC, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return { sentimentIntent, topic: topic.length >= 2 ? topic : q }
 }
 
 // ─────────────────────────────────────────────────────────────────

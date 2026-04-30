@@ -1,46 +1,40 @@
 import { NavLink } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import {
-  Upload, LayoutDashboard, Wand2, Sigma,
-  Filter, BarChart3, Table2, GitMerge, TrendingUp, AlertTriangle, Type,
-  Sparkles, Code2, FileText, Layers, MessageSquare,
+  Upload, LayoutDashboard, Wand2,
+  Table2, Type,
+  Sparkles, FileText, Layers, MessageSquare, Presentation,
 } from 'lucide-react'
 
 const navGroups = [
   {
     label: 'Data',
     items: [
-      { to: '/upload',     label: 'Upload',          icon: Upload },
-      { to: '/profile',    label: 'Profile',         icon: LayoutDashboard },
-      { to: '/clean',      label: 'Clean',           icon: Wand2 },
-      { to: '/calculated', label: 'Calculated Cols', icon: Sigma },
+      { to: '/upload',  label: 'Upload',  icon: Upload },
+      { to: '/profile', label: 'Profile', icon: LayoutDashboard },
+      { to: '/clean',   label: 'Clean',   icon: Wand2 },
     ],
   },
   {
     label: 'Analysis',
     items: [
-      { to: '/filter',       label: 'Smart Filter',  icon: Filter },
-      { to: '/charts',       label: 'Charts',        icon: BarChart3 },
       { to: '/pivot',        label: 'Pivot Table',   icon: Table2 },
-      { to: '/correlations', label: 'Correlations',  icon: GitMerge },
-      { to: '/forecast',     label: 'Forecasting',   icon: TrendingUp },
-      { to: '/anomalies',    label: 'Anomalies',     icon: AlertTriangle },
       { to: '/text-analysis', label: 'Text Analysis', icon: Type },
     ],
   },
   {
     label: 'AI',
     items: [
-      { to: '/chat',    label: 'Chat with Data', icon: MessageSquare },
-      { to: '/ai',      label: 'AI Assistant',   icon: Sparkles },
-      { to: '/codegen', label: 'Code Generator', icon: Code2 },
-      { to: '/report',  label: 'Auto Report',    icon: FileText },
+      { to: '/chat',   label: 'Chat with Data', icon: MessageSquare },
+      { to: '/ai',     label: 'AI Assistant',   icon: Sparkles },
+      { to: '/report', label: 'Auto Report',    icon: FileText },
     ],
   },
   {
     label: 'Platform',
     items: [
-      { to: '/icons', label: 'Icon Library', icon: Layers },
+      { to: '/pptx',  label: 'PowerPoint Templates', icon: Presentation },
+      { to: '/icons', label: 'Icon Library',          icon: Layers },
     ],
   },
 ]

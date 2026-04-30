@@ -8,19 +8,13 @@ import Header from './components/Header'
 const DataUpload = lazy(() => import('./modules/upload/DataUpload'))
 const DataProfile = lazy(() => import('./modules/profile/DataProfile'))
 const DataClean = lazy(() => import('./modules/clean/DataClean'))
-const ChartBuilder = lazy(() => import('./modules/charts/ChartBuilder'))
 const PivotTable = lazy(() => import('./modules/pivot/PivotTable'))
-const CorrelationMatrix = lazy(() => import('./modules/correlation/CorrelationMatrix'))
 const AIAssistant = lazy(() => import('./modules/ai/AIAssistant'))
-const CalculatedColumns = lazy(() => import('./modules/calculated/CalculatedColumns'))
 const ReportBuilder = lazy(() => import('./modules/report/ReportBuilder'))
-const Forecasting = lazy(() => import('./modules/forecast/Forecasting'))
-const NLFilter = lazy(() => import('./modules/nlfilter/NLFilter'))
-const AnomalyExplainer = lazy(() => import('./modules/anomaly/AnomalyExplainer'))
 const DataChat = lazy(() => import('./modules/chat/DataChat'))
-const CodeGenerator = lazy(() => import('./modules/codegen/CodeGenerator'))
 const IconLibrary = lazy(() => import('./modules/icons/IconLibrary'))
 const TextAnalysis = lazy(() => import('./modules/textanalysis/TextAnalysis'))
+const PptxTemplates = lazy(() => import('./modules/pptx/PptxTemplates'))
 
 function PageLoader() {
   return (
@@ -41,23 +35,17 @@ export default function App() {
           <main className="flex-1 mt-14 p-7 bg-bg min-w-0 overflow-x-hidden">
             <Suspense fallback={<PageLoader />}>
               <Routes>
-                <Route path="/upload"       element={<DataUpload />} />
-                <Route path="/profile"      element={<DataProfile />} />
-                <Route path="/clean"        element={<DataClean />} />
-                <Route path="/charts"       element={<ChartBuilder />} />
-                <Route path="/pivot"        element={<PivotTable />} />
-                <Route path="/correlations" element={<CorrelationMatrix />} />
-                <Route path="/chat"         element={<DataChat />} />
-                <Route path="/ai"           element={<AIAssistant />} />
-                <Route path="/calculated"   element={<CalculatedColumns />} />
-                <Route path="/report"       element={<ReportBuilder />} />
-                <Route path="/forecast"     element={<Forecasting />} />
-                <Route path="/filter"       element={<NLFilter />} />
-                <Route path="/anomalies"    element={<AnomalyExplainer />} />
+                <Route path="/upload"        element={<DataUpload />} />
+                <Route path="/profile"       element={<DataProfile />} />
+                <Route path="/clean"         element={<DataClean />} />
+                <Route path="/pivot"         element={<PivotTable />} />
+                <Route path="/chat"          element={<DataChat />} />
+                <Route path="/ai"            element={<AIAssistant />} />
+                <Route path="/report"        element={<ReportBuilder />} />
                 <Route path="/text-analysis" element={<TextAnalysis />} />
-                <Route path="/codegen"      element={<CodeGenerator />} />
-                <Route path="/icons"        element={<IconLibrary />} />
-                <Route path="*"             element={<Navigate to="/upload" replace />} />
+                <Route path="/pptx"          element={<PptxTemplates />} />
+                <Route path="/icons"         element={<IconLibrary />} />
+                <Route path="*"              element={<Navigate to="/upload" replace />} />
               </Routes>
             </Suspense>
           </main>

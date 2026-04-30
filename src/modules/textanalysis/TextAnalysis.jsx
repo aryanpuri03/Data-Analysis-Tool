@@ -5,31 +5,66 @@ import {
 } from 'recharts'
 import {
   Type, Sparkles, Loader2, AlertCircle, RefreshCw, Search, X,
-  CheckCircle2, XCircle, Download,
+  CheckCircle2, XCircle, Download, TrendingUp, MessageSquare, Hash,
+  ChevronRight, FileText,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { useData } from '../../context/DataContext'
 import { renderMarkdown } from '../../utils/renderMarkdown'
-import { analyseColumn, buildBM25Index, bm25Search, extractKeywords, extractPhrases, scoreSentiment } from '../../utils/textAnalysisUtils'
+import {
+  analyseColumn, buildBM25Index, bm25Search,
+  extractKeywords, extractPhrases, scoreSentiment, parseQueryIntent,
+} from '../../utils/textAnalysisUtils'
 
 const SENTIMENT_COLOURS = { positive: '#10B981', neutral: '#94A3B8', negative: '#EF4444' }
-const SENTIMENT_LABELS = ['positive', 'neutral', 'negative']
-const RELEVANCE_CAP = 40   // max rows sent to LLM for relevance review
+const SENTIMENT_BG      = { positive: 'bg-emerald-50', neutral: 'bg-slate-50', negative: 'bg-red-50' }
+const SENTIMENT_TEXT    = { positive: 'text-emerald-600', neutral: 'text-slate-500', negative: 'text-red-500' }
+const SENTIMENT_BORDER  = { positive: 'border-emerald-200', neutral: 'border-slate-200', negative: 'border-red-200' }
+const SENTIMENT_BAR     = { positive: 'bg-emerald-400', neutral: 'bg-slate-300', negative: 'bg-red-400' }
+const SENTIMENT_LABELS  = ['positive', 'neutral', 'negative']
+const RELEVANCE_CAP     = 40
 
-function SentimentBadge({ label }) {
-  const cls = {
-    positive: 'bg-emerald-100 text-emerald-700',
-    neutral: 'bg-slate-100 text-slate-500',
-    negative: 'bg-red-100 text-red-600',
-  }[label] || 'bg-slate-100 text-slate-500'
-  return <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${cls}`}>{label}</span>
+// ── Sub-components ───────────────────────────────────────────────
+
+function SentimentBadge({ label, size = 'sm' }) {
+  const map = {
+    positive: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+    neutral:  'bg-slate-100 text-slate-500 border border-slate-200',
+    negative: 'bg-red-100 text-red-600 border border-red-200',
+  }
+  const cls = map[label] || map.neutral
+  const sz  = size === 'xs' ? 'px-1.5 py-px text-[10px]' : 'px-2 py-0.5 text-[11px]'
+  return (
+    <span className={`inline-flex items-center rounded-full font-medium capitalize ${cls} ${sz}`}>
+      {label}
+    </span>
+  )
 }
 
-function Panel({ title, children }) {
+function Card({ children, className = '' }) {
   return (
-    <div className="bg-white border border-border rounded-xl p-5">
-      <h3 className="text-sm font-semibold text-text-primary mb-4">{title}</h3>
+    <div className={`bg-white rounded-2xl border border-slate-100 shadow-sm ${className}`}>
       {children}
+    </div>
+  )
+}
+
+function SectionLabel({ children }) {
+  return (
+    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
+      {children}
+    </p>
+  )
+}
+
+function EmptyCard({ icon: Icon, title, subtitle }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-3">
+      <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center">
+        <Icon className="w-5 h-5 text-slate-300" />
+      </div>
+      <p className="text-sm font-medium text-slate-500">{title}</p>
+      {subtitle && <p className="text-xs text-slate-400 text-center max-w-xs">{subtitle}</p>}
     </div>
   )
 }
@@ -38,68 +73,74 @@ function highlightText(text, terms) {
   if (!terms || terms.length === 0) return text
   const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
   const pattern = new RegExp(`(${escaped.join('|')})`, 'gi')
-  const parts = text.split(pattern)
+  const parts   = text.split(pattern)
   return parts.map((part, i) =>
     i % 2 === 1
-      ? <mark key={i} className="bg-yellow-200 text-yellow-900 rounded-sm px-0.5 font-medium not-italic">{part}</mark>
+      ? <mark key={i} className="bg-amber-100 text-amber-900 rounded px-0.5 not-italic font-medium">{part}</mark>
       : part
   )
 }
 
+// ── Main Component ───────────────────────────────────────────────
+
 export default function TextAnalysis() {
   const { dataset, columns, types } = useData()
-  const [activeCol, setActiveCol] = useState(null)
-  const [aiOutput, setAiOutput] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState(null)
+  const [activeCol, setActiveCol]   = useState(null)
+  const [aiOutput, setAiOutput]     = useState('')
+  const [aiLoading, setAiLoading]   = useState(false)
+  const [aiError, setAiError]       = useState(null)
   const [sentimentTab, setSentimentTab] = useState('all')
 
-  // Topic search state
-  const [searchQuery, setSearchQuery]           = useState('')
-  const [expandedTerms, setExpandedTerms]       = useState([])
-  const [searchResults, setSearchResults]       = useState(null)
-  const [searchLoading, setSearchLoading]       = useState(false)
-  const [searchError, setSearchError]           = useState(null)
-  const [focusedAnalysis, setFocusedAnalysis]   = useState(null)
-  const [focusedAiOutput, setFocusedAiOutput]   = useState('')
+  const [searchQuery, setSearchQuery]         = useState('')
+  const [expandedTerms, setExpandedTerms]     = useState([])
+  const [searchResults, setSearchResults]     = useState(null)
+  const [searchLoading, setSearchLoading]     = useState(false)
+  const [searchError, setSearchError]         = useState(null)
+  const [focusedAnalysis, setFocusedAnalysis] = useState(null)
+  const [focusedAiOutput, setFocusedAiOutput] = useState('')
   const [focusedAiLoading, setFocusedAiLoading] = useState(false)
-  const [focusedAiError, setFocusedAiError]     = useState(null)
+  const [focusedAiError, setFocusedAiError]   = useState(null)
 
-  // Relevance review state
-  const [relevanceVerdicts, setRelevanceVerdicts] = useState({})  // rowIdx → { relevant, reason }
+  const [relevanceVerdicts, setRelevanceVerdicts] = useState({})
   const [relevanceLoading, setRelevanceLoading]   = useState(false)
   const [showOnlyRelevant, setShowOnlyRelevant]   = useState(false)
+  const [searchSentimentFilter, setSearchSentimentFilter] = useState('all')
+  const [detectedIntent, setDetectedIntent]       = useState(null) // { sentimentIntent, topic }
 
   const expandCacheRef = useRef({})
 
+  // ── Logic (unchanged) ────────────────────────────────────────
+
   function computeFocusedAnalysis(matchedTexts) {
     if (!matchedTexts.length) return null
-    const sentiments = matchedTexts.map(t => scoreSentiment(t))
+    const sentiments      = matchedTexts.map(t => scoreSentiment(t))
     const sentimentCounts = { positive: 0, negative: 0, neutral: 0 }
     for (const s of sentiments) sentimentCounts[s.label]++
     const avgScore = sentiments.reduce((a, s) => a + s.score, 0) / sentiments.length
     return {
-      texts: matchedTexts,
-      total: matchedTexts.length,
-      sentiments,
-      sentimentCounts,
-      avgScore,
+      texts: matchedTexts, total: matchedTexts.length,
+      sentiments, sentimentCounts, avgScore,
       keywords: extractKeywords(matchedTexts, 12),
-      phrases: extractPhrases(matchedTexts, 8),
+      phrases:  extractPhrases(matchedTexts, 8),
     }
   }
 
-  async function runRelevanceCheck(results, query) {
+  async function runRelevanceCheck(results, query, sentimentIntent = null) {
     if (!results.length) return
     setRelevanceLoading(true)
     setRelevanceVerdicts({})
-    const cap = results.slice(0, RELEVANCE_CAP)
+    const cap      = results.slice(0, RELEVANCE_CAP)
     const numbered = cap.map((r, i) => `${i + 1}. ${r.text}`).join('\n')
-    const prompt = `You are reviewing customer feedback from Edinburgh Airport. A team member searched for: "${query}"
 
-The system returned ${cap.length} responses as potential matches. For each response below, decide if it is genuinely about the topic "${query}" or a false match (e.g. matched on an unrelated word).
+    const sentimentClause = sentimentIntent
+      ? `The analyst specifically wants ${sentimentIntent} responses. A result is only relevant if it is both about the topic AND ${sentimentIntent} in tone. `
+      : ''
 
-Return ONLY a valid JSON array. Each item must have exactly:
+    const prompt   = `You are reviewing customer feedback from Edinburgh Airport. A team member searched for: "${query}"
+
+${sentimentClause}The system returned ${cap.length} responses as potential matches. For each response below, decide if it is genuinely relevant to the search (matching both topic and${sentimentIntent ? ` ${sentimentIntent} sentiment` : ' intent'}) or a false match.
+
+Return ONLY a valid JSON array. Each item must have:
 - "n": the response number (1 to ${cap.length})
 - "relevant": true or false
 - "reason": a concise 4-8 word explanation
@@ -111,8 +152,7 @@ Return ONLY the JSON array, no markdown, no explanation.`
 
     try {
       const res = await fetch('/api/insights', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, maxTokens: 900 }),
       })
       if (!res.ok) throw new Error(`API error ${res.status}`)
@@ -122,81 +162,63 @@ Return ONLY the JSON array, no markdown, no explanation.`
       const parsed = JSON.parse(match[0])
       const map = {}
       for (const item of parsed) {
-        if (typeof item.n === 'number' && item.n >= 1 && item.n <= cap.length) {
+        if (typeof item.n === 'number' && item.n >= 1 && item.n <= cap.length)
           map[cap[item.n - 1].idx] = { relevant: !!item.relevant, reason: item.reason || '' }
-        }
       }
       setRelevanceVerdicts(map)
     } catch (_e) {
-      // silently fail — verdicts just won't appear
+      // silently fail
     } finally {
       setRelevanceLoading(false)
     }
   }
 
-  // Detect text columns
   const textColumns = useMemo(() => {
     if (!dataset || !columns) return []
     return columns.filter(col => {
       if (types[col] === 'freetext') return true
       if (types[col] === 'categorical') {
         const vals = dataset.map(r => String(r[col] || '')).filter(v => v.length > 0)
-        const avg = vals.reduce((a, v) => a + v.length, 0) / (vals.length || 1)
+        const avg  = vals.reduce((a, v) => a + v.length, 0) / (vals.length || 1)
         return avg > 20
       }
       return false
     })
   }, [dataset, columns, types])
 
-  const analysis = useMemo(() => {
-    if (!activeCol || !dataset) return null
-    return analyseColumn(dataset, activeCol)
-  }, [activeCol, dataset])
-
-  const bm25Index = useMemo(() => {
-    if (!analysis) return null
-    return buildBM25Index(analysis.texts)
-  }, [analysis])
+  const analysis  = useMemo(() => activeCol && dataset ? analyseColumn(dataset, activeCol) : null, [activeCol, dataset])
+  const bm25Index = useMemo(() => analysis ? buildBM25Index(analysis.texts) : null, [analysis])
 
   const selectColumn = useCallback((col) => {
-    setActiveCol(col)
-    setAiOutput('')
-    setAiError(null)
-    setSentimentTab('all')
-    setSearchQuery('')
-    setExpandedTerms([])
-    setSearchResults(null)
-    setSearchError(null)
-    setFocusedAnalysis(null)
-    setFocusedAiOutput('')
-    setFocusedAiError(null)
-    setRelevanceVerdicts({})
-    setRelevanceLoading(false)
-    setShowOnlyRelevant(false)
+    setActiveCol(col); setAiOutput(''); setAiError(null); setSentimentTab('all')
+    setSearchQuery(''); setExpandedTerms([]); setSearchResults(null)
+    setSearchError(null); setFocusedAnalysis(null); setFocusedAiOutput('')
+    setFocusedAiError(null); setRelevanceVerdicts({}); setRelevanceLoading(false)
+    setShowOnlyRelevant(false); setSearchSentimentFilter('all'); setDetectedIntent(null)
   }, [])
 
   const runFocusedSearch = useCallback(async () => {
     const q = searchQuery.trim()
     if (!q || !analysis || !bm25Index) return
-    setSearchLoading(true)
-    setSearchError(null)
-    setSearchResults(null)
-    setFocusedAnalysis(null)
-    setFocusedAiOutput('')
-    setFocusedAiError(null)
-    setRelevanceVerdicts({})
-    setRelevanceLoading(false)
-    setShowOnlyRelevant(false)
 
+    // ── Parse sentiment intent and extract core topic ──────────────
+    const { sentimentIntent, topic } = parseQueryIntent(q)
+    setDetectedIntent(sentimentIntent ? { sentimentIntent, topic } : null)
+
+    setSearchLoading(true); setSearchError(null); setSearchResults(null)
+    setFocusedAnalysis(null); setFocusedAiOutput(''); setFocusedAiError(null)
+    setRelevanceVerdicts({}); setRelevanceLoading(false); setShowOnlyRelevant(false)
+    setSearchSentimentFilter('all')
     let finalResults = []
 
     try {
-      let terms = expandCacheRef.current[q.toLowerCase()]
-
+      // Use the stripped topic as the cache + expansion key, not the full query
+      const expandKey = topic.toLowerCase()
+      let terms = expandCacheRef.current[expandKey]
       if (!terms) {
         const prompt = `You are a text analysis assistant for Edinburgh Airport's CX team.
 
-The analyst wants to search customer feedback for responses related to: "${q}"
+The analyst wants to search customer feedback for responses related to: "${topic}"
 
 Generate a JSON array of 20–25 specific words and short phrases (max 3 words each) that airport customers would actually write when talking about this topic. Include:
 - Direct topic words and their plural/verb forms
@@ -212,67 +234,65 @@ Examples:
 - "food and drink" → ["food","drink","drinks","cafe","restaurant","coffee","tea","meal","snack","sandwich","hungry","thirsty","menu","overpriced","expensive","bar","eating","dining","refreshments","water","bottle"]`
 
         const res = await fetch('/api/insights', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, maxTokens: 400 }),
         })
         if (!res.ok) throw new Error(`API error ${res.status}`)
         const { content } = await res.json()
-        const match = content.match(/\[[\s\S]*?\]/)
-        if (!match) throw new Error('AI returned unexpected format')
-        terms = JSON.parse(match[0]).filter(t => typeof t === 'string' && t.length > 0)
-        expandCacheRef.current[q.toLowerCase()] = terms
+        const m = content.match(/\[[\s\S]*?\]/)
+        if (!m) throw new Error('AI returned unexpected format')
+        terms = JSON.parse(m[0]).filter(t => typeof t === 'string' && t.length > 0)
+        expandCacheRef.current[expandKey] = terms
       }
 
       setExpandedTerms(terms)
-      const results = bm25Search(terms, analysis.texts, bm25Index)
+      let results = bm25Search(terms, analysis.texts, bm25Index)
+
+      // ── Sentiment pre-filter ────────────────────────────────────
+      // e.g. "negative comments about check in" → keep only negative-labelled responses
+      if (sentimentIntent) {
+        results = results.filter(r => analysis.sentiments[r.idx]?.label === sentimentIntent)
+        // Re-normalise scores after filtering
+        const maxScore = results[0]?.score ?? 1
+        results = results.map(r => ({ ...r, normScore: r.score / maxScore }))
+      }
+
       finalResults = results
       setSearchResults(results)
       setFocusedAnalysis(computeFocusedAnalysis(results.map(r => r.text)))
     } catch (e) {
       const fallback = analysis.texts
-        .map((text, idx) => ({ text, idx, normScore: text.toLowerCase().includes(q.toLowerCase()) ? 1 : 0 }))
+        .map((text, idx) => ({ text, idx, score: text.toLowerCase().includes(q.toLowerCase()) ? 1 : 0, normScore: text.toLowerCase().includes(q.toLowerCase()) ? 1 : 0 }))
         .filter(r => r.normScore > 0)
       finalResults = fallback
-      setExpandedTerms([q])
-      setSearchResults(fallback)
+      setExpandedTerms([q]); setSearchResults(fallback)
       setFocusedAnalysis(computeFocusedAnalysis(fallback.map(r => r.text)))
       if (fallback.length === 0) setSearchError(e.message || 'Search failed')
     } finally {
       setSearchLoading(false)
     }
 
-    // After search completes, ask LLM to review which results are truly relevant
-    if (finalResults.length > 0) {
-      runRelevanceCheck(finalResults, q)
-    }
+    if (finalResults.length > 0) runRelevanceCheck(finalResults, q, sentimentIntent)
   }, [searchQuery, analysis, bm25Index])
 
   const removeTerm = useCallback((term) => {
-    setRelevanceVerdicts({})
-    setShowOnlyRelevant(false)
+    setRelevanceVerdicts({}); setShowOnlyRelevant(false)
     setExpandedTerms(prev => {
       const next = prev.filter(t => t !== term)
       if (analysis && bm25Index && next.length > 0) {
         const results = bm25Search(next, analysis.texts, bm25Index)
         setSearchResults(results)
         setFocusedAnalysis(computeFocusedAnalysis(results.map(r => r.text)))
-      } else {
-        setSearchResults(null)
-        setFocusedAnalysis(null)
-      }
+      } else { setSearchResults(null); setFocusedAnalysis(null) }
       return next
     })
   }, [analysis, bm25Index])
 
   const runFocusedAiAnalysis = useCallback(async () => {
     if (!focusedAnalysis || !searchQuery) return
-    setFocusedAiLoading(true)
-    setFocusedAiError(null)
-    setFocusedAiOutput('')
-
+    setFocusedAiLoading(true); setFocusedAiError(null); setFocusedAiOutput('')
     const samples = focusedAnalysis.texts.slice(0, 60).map((t, i) => `${i + 1}. ${t}`).join('\n')
-    const prompt = `You are a CX analyst for Edinburgh Airport. A team member searched for: "${searchQuery}"
+    const prompt  = `You are a CX analyst for Edinburgh Airport. A team member searched for: "${searchQuery}"
 
 This returned ${focusedAnalysis.total} matching customer responses:
 
@@ -289,28 +309,21 @@ Reference actual phrases from the responses where relevant.`
 
     try {
       const res = await fetch('/api/insights', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, maxTokens: 1200 }),
       })
       if (!res.ok) throw new Error(`API error ${res.status}`)
       const { content } = await res.json()
       setFocusedAiOutput(content || 'No response received.')
-    } catch (e) {
-      setFocusedAiError(e.message || 'Failed to contact AI service.')
-    } finally {
-      setFocusedAiLoading(false)
-    }
+    } catch (e) { setFocusedAiError(e.message || 'Failed to contact AI service.')
+    } finally   { setFocusedAiLoading(false) }
   }, [focusedAnalysis, searchQuery])
 
   const runAiAnalysis = useCallback(async () => {
     if (!analysis) return
-    setAiLoading(true)
-    setAiError(null)
-    setAiOutput('')
-
+    setAiLoading(true); setAiError(null); setAiOutput('')
     const samples = analysis.texts.slice(0, 80).join('\n- ')
-    const prompt = `You are a CX analyst for Edinburgh Airport. Analyse the following ${analysis.total} customer feedback responses from the column "${activeCol}".
+    const prompt  = `You are a CX analyst for Edinburgh Airport. Analyse the following ${analysis.total} customer feedback responses from the column "${activeCol}".
 
 Sample responses:
 - ${samples}
@@ -326,92 +339,65 @@ Be specific and reference actual phrases from the data where relevant.`
 
     try {
       const res = await fetch('/api/insights', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, maxTokens: 1200 }),
       })
       if (!res.ok) throw new Error(`API error ${res.status}`)
       const { content } = await res.json()
       setAiOutput(content || 'No response received.')
-    } catch (e) {
-      setAiError(e.message || 'Failed to contact AI service.')
-    } finally {
-      setAiLoading(false)
-    }
+    } catch (e) { setAiError(e.message || 'Failed to contact AI service.')
+    } finally   { setAiLoading(false) }
   }, [analysis, activeCol])
 
   const filteredRows = useMemo(() => {
     if (!analysis) return []
     const pairs = analysis.texts.map((text, i) => ({ text, sentiment: analysis.sentiments[i] }))
-    if (sentimentTab === 'all') return pairs.slice(0, 50)
-    return pairs.filter(p => p.sentiment.label === sentimentTab).slice(0, 50)
+    if (sentimentTab === 'all') return pairs
+    return pairs.filter(p => p.sentiment.label === sentimentTab)
   }, [analysis, sentimentTab])
 
-  // Derive relevance summary counts
   const relevanceSummary = useMemo(() => {
     const vals = Object.values(relevanceVerdicts)
     if (!vals.length) return null
-    const confirmed = vals.filter(v => v.relevant).length
-    const rejected = vals.filter(v => !v.relevant).length
-    return { confirmed, rejected, total: vals.length }
+    return { confirmed: vals.filter(v => v.relevant).length, rejected: vals.filter(v => !v.relevant).length, total: vals.length }
   }, [relevanceVerdicts])
 
-  // Filtered search results (show only relevant if toggle active)
   const displayedResults = useMemo(() => {
     if (!searchResults) return []
-    const base = searchResults.slice(0, 50)
-    if (!showOnlyRelevant || !relevanceSummary) return base
-    return base.filter(r => relevanceVerdicts[r.idx]?.relevant === true)
-  }, [searchResults, showOnlyRelevant, relevanceVerdicts, relevanceSummary])
+    let base = searchResults
+    if (showOnlyRelevant && relevanceSummary) {
+      base = base.filter(r => relevanceVerdicts[r.idx]?.relevant === true)
+    }
+    if (searchSentimentFilter !== 'all' && focusedAnalysis) {
+      base = base.filter(r => {
+        const siIdx = searchResults.findIndex(sr => sr.idx === r.idx)
+        return focusedAnalysis.sentiments[siIdx]?.label === searchSentimentFilter
+      })
+    }
+    return base
+  }, [searchResults, showOnlyRelevant, relevanceVerdicts, relevanceSummary, searchSentimentFilter, focusedAnalysis])
 
   function exportResults() {
     if (!searchResults || !focusedAnalysis) return
-    const rows = searchResults.slice(0, 50).map(({ text, idx, normScore }) => {
+    const rows = searchResults.map(({ text, idx, normScore }) => {
       const verdict   = relevanceVerdicts[idx]
       const siIdx     = searchResults.findIndex(r => r.idx === idx)
       const sentiment = focusedAnalysis.sentiments[siIdx]
       return {
-        'Row #':         idx + 1,
-        'Response':      text,
-        'Match %':       Math.round(normScore * 100),
-        'Sentiment':     sentiment?.label || '',
-        'Sent. Score':   sentiment ? (sentiment.score >= 0 ? '+' : '') + sentiment.score.toFixed(2) : '',
-        'Relevant':      verdict ? (verdict.relevant ? 'Yes' : 'No') : 'Not reviewed',
-        'AI Reason':     verdict?.reason || '',
-        'Search Query':  searchQuery,
+        'Row #':        idx + 1, 'Response': text, 'Match %': Math.round(normScore * 100),
+        'Sentiment':    sentiment?.label || '', 'Sent. Score': sentiment ? (sentiment.score >= 0 ? '+' : '') + sentiment.score.toFixed(2) : '',
+        'Relevant':     verdict ? (verdict.relevant ? 'Yes' : 'No') : 'Not reviewed',
+        'AI Reason':    verdict?.reason || '', 'Search Query': searchQuery,
       }
     })
     const ws = XLSX.utils.json_to_sheet(rows)
-    // Auto-width columns
-    const colWidths = Object.keys(rows[0] || {}).map(k => ({
-      wch: Math.max(k.length, ...rows.map(r => String(r[k] || '').length).slice(0, 30)),
-    }))
-    ws['!cols'] = colWidths
+    ws['!cols'] = Object.keys(rows[0] || {}).map(k => ({ wch: Math.max(k.length, ...rows.map(r => String(r[k] || '').length).slice(0, 30)) }))
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Topic Results')
-    const filename = `topic-search-${searchQuery.replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0, 40)}.xlsx`
-    XLSX.writeFile(wb, filename)
+    XLSX.writeFile(wb, `topic-search-${searchQuery.replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0, 40)}.xlsx`)
   }
 
-  // ── Empty states ──
-  if (!dataset) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-secondary">
-        <Type className="w-8 h-8 opacity-30" />
-        <p className="text-sm">No data loaded — upload a file first.</p>
-      </div>
-    )
-  }
-
-  if (textColumns.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-secondary">
-        <Type className="w-8 h-8 opacity-30" />
-        <p className="text-sm">No text columns detected in this dataset.</p>
-        <p className="text-xs opacity-60">Text Analysis works with free-text or long categorical columns.</p>
-      </div>
-    )
-  }
+  // ── Derived display values ───────────────────────────────────
 
   const pieData = analysis
     ? SENTIMENT_LABELS.map(label => ({
@@ -423,490 +409,693 @@ Be specific and reference actual phrases from the data where relevant.`
   const avgLabel = !analysis ? null
     : analysis.avgScore > 0.02 ? 'positive' : analysis.avgScore < -0.02 ? 'negative' : 'neutral'
 
+  // ── Empty states ─────────────────────────────────────────────
+
+  if (!dataset) {
+    return (
+      <EmptyCard
+        icon={Type}
+        title="No data loaded"
+        subtitle="Upload a CSV or Excel file to start analysing free-text responses."
+      />
+    )
+  }
+
+  if (textColumns.length === 0) {
+    return (
+      <EmptyCard
+        icon={MessageSquare}
+        title="No text columns detected"
+        subtitle="Text Analysis works with free-text or long categorical columns (avg. length > 20 characters)."
+      />
+    )
+  }
+
+  // ── Render ───────────────────────────────────────────────────
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-7 pb-8">
+
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5 mb-1">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center shadow-sm shrink-0">
+              <Type className="w-4 h-4 text-white" />
+            </div>
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight">Text Analysis</h1>
+          </div>
+          <p className="text-sm text-slate-500 ml-10.5">
+            Sentiment, keyword and topic intelligence from free-text feedback
+          </p>
+        </div>
+        {analysis && (
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="text-right">
+              <p className="text-[11px] text-slate-400">Responses</p>
+              <p className="text-base font-bold text-slate-700">{analysis.total.toLocaleString()}</p>
+            </div>
+            <div className="w-px h-8 bg-slate-200" />
+            <div className="text-right">
+              <p className="text-[11px] text-slate-400">Column</p>
+              <p className="text-sm font-semibold text-blue-600 truncate max-w-[120px]">{activeCol}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Column selector ── */}
       <div>
-        <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
-          <Type className="w-5 h-5 text-brand-blue" />
-          Text Analysis
-        </h1>
-        <p className="text-sm text-text-secondary mt-1">
-          Sentiment, keywords and AI topic insights from free-text columns
-        </p>
+        <SectionLabel>Select column to analyse</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {textColumns.map(col => (
+            <button
+              key={col}
+              onClick={() => selectColumn(col)}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all duration-150 ${
+                activeCol === col
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-200'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:text-blue-600 hover:shadow-sm'
+              }`}
+            >
+              <Hash className={`w-3 h-3 ${activeCol === col ? 'opacity-70' : 'opacity-40'}`} />
+              {col}
+            </button>
+          ))}
+        </div>
+        {!activeCol && (
+          <p className="text-xs text-slate-400 mt-3 flex items-center gap-1.5">
+            <ChevronRight className="w-3 h-3" /> Choose a column above to begin
+          </p>
+        )}
       </div>
-
-      {/* Column selector */}
-      <div className="flex flex-wrap gap-2">
-        {textColumns.map(col => (
-          <button
-            key={col}
-            onClick={() => selectColumn(col)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-              activeCol === col
-                ? 'bg-brand-blue text-white border-brand-blue'
-                : 'bg-white text-text-secondary border-border hover:border-brand-blue hover:text-brand-blue'
-            }`}
-          >
-            {col}
-          </button>
-        ))}
-      </div>
-
-      {!activeCol && (
-        <p className="text-sm text-text-secondary">Select a column above to begin analysis.</p>
-      )}
 
       {analysis && (
         <>
-          {/* 4-panel grid */}
+          {/* ── Overview stat strip ── */}
+          <div className="grid grid-cols-3 gap-3">
+            {SENTIMENT_LABELS.map(label => {
+              const count = analysis.sentimentCounts[label]
+              const pct   = analysis.total ? Math.round(count / analysis.total * 100) : 0
+              return (
+                <Card key={label} className={`p-4 border-l-4 ${SENTIMENT_BORDER[label]}`}>
+                  <div className="flex items-start justify-between mb-2">
+                    <span className={`text-[11px] font-semibold uppercase tracking-wider ${SENTIMENT_TEXT[label]}`}>{label}</span>
+                    <span className={`text-[11px] font-bold px-1.5 py-px rounded-md ${SENTIMENT_BG[label]} ${SENTIMENT_TEXT[label]}`}>{pct}%</span>
+                  </div>
+                  <p className={`text-2xl font-black ${SENTIMENT_TEXT[label]}`}>{count.toLocaleString()}</p>
+                  <div className="mt-2 h-1 rounded-full bg-slate-100 overflow-hidden">
+                    <div className={`h-full rounded-full ${SENTIMENT_BAR[label]} transition-all duration-500`} style={{ width: `${pct}%` }} />
+                  </div>
+                </Card>
+              )
+            })}
+          </div>
+
+          {/* ── 4-panel grid ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-            {/* Panel 1: Sentiment Overview */}
-            <Panel title="Sentiment Overview">
-              <div className="flex gap-3 mb-4">
+            {/* Panel 1: Sentiment breakdown */}
+            <Card className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm font-semibold text-slate-700">Sentiment Breakdown</p>
+                {avgLabel && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-slate-400">Overall:</span>
+                    <SentimentBadge label={avgLabel} />
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-center">
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={pieData} dataKey="value" nameKey="name"
+                      cx="50%" cy="50%" innerRadius={52} outerRadius={80}
+                      paddingAngle={3}
+                    >
+                      {pieData.map(entry => (
+                        <Cell key={entry.name} fill={SENTIMENT_COLOURS[entry.name.toLowerCase()]} strokeWidth={0} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.10)', fontSize: 12 }}
+                      formatter={(v, n) => [`${v} responses`, n]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-1">
                 {SENTIMENT_LABELS.map(label => (
-                  <div key={label} className="flex-1 bg-slate-50 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold" style={{ color: SENTIMENT_COLOURS[label] }}>
-                      {analysis.sentimentCounts[label]}
-                    </p>
-                    <p className="text-[11px] text-text-secondary capitalize mt-0.5">{label}</p>
-                    <p className="text-[10px] text-text-muted">
-                      {analysis.total ? Math.round(analysis.sentimentCounts[label] / analysis.total * 100) : 0}%
-                    </p>
+                  <div key={label} className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: SENTIMENT_COLOURS[label] }} />
+                    <span className="text-[11px] text-slate-500 capitalize">{label}</span>
                   </div>
                 ))}
               </div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-xs text-text-secondary">Overall tone:</span>
-                {avgLabel && <SentimentBadge label={avgLabel} />}
-                <span className="text-xs text-text-muted ml-auto">
-                  score {analysis.avgScore >= 0 ? '+' : ''}{(analysis.avgScore * 100).toFixed(1)}
-                </span>
-              </div>
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                    {pieData.map((entry) => (
-                      <Cell key={entry.name} fill={SENTIMENT_COLOURS[entry.name.toLowerCase()]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </Panel>
+            </Card>
 
-            {/* Panel 2: Top Keywords */}
-            <Panel title="Top Keywords">
+            {/* Panel 2: Top keywords */}
+            <Card className="p-5">
+              <p className="text-sm font-semibold text-slate-700 mb-4">Top Keywords</p>
               {analysis.keywords.length === 0 ? (
-                <p className="text-xs text-text-secondary">Not enough text data.</p>
+                <p className="text-xs text-slate-400">Not enough text data.</p>
               ) : (
-                <ResponsiveContainer width="100%" height={260}>
+                <ResponsiveContainer width="100%" height={230}>
                   <BarChart
-                    data={analysis.keywords.slice(0, 15).reverse()}
+                    data={analysis.keywords.slice(0, 12).reverse()}
                     layout="vertical"
-                    margin={{ left: 8, right: 16, top: 0, bottom: 0 }}
+                    margin={{ left: 0, right: 16, top: 0, bottom: 0 }}
                   >
-                    <XAxis type="number" tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="word" tick={{ fontSize: 11 }} width={80} />
-                    <Tooltip formatter={(v) => [v, 'count']} />
-                    <Bar dataKey="count" radius={[0, 3, 3, 0]}>
-                      {analysis.keywords.slice(0, 15).map((_, i) => (
-                        <Cell key={i} fill="#2563EB" fillOpacity={0.7 + i * 0.02} />
+                    <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="word" tick={{ fontSize: 11, fill: '#64748b' }} width={76} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.10)', fontSize: 12 }}
+                      formatter={v => [`${v} occurrences`, 'Count']}
+                      cursor={{ fill: '#f1f5f9' }}
+                    />
+                    <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={18}>
+                      {analysis.keywords.slice(0, 12).map((_, i) => (
+                        <Cell key={i} fill="#3b82f6" fillOpacity={0.55 + i * 0.035} />
                       ))}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               )}
-            </Panel>
+            </Card>
 
-            {/* Panel 3: Key Phrases */}
-            <Panel title="Key Phrases">
+            {/* Panel 3: Key phrases */}
+            <Card className="p-5">
+              <p className="text-sm font-semibold text-slate-700 mb-4">Recurring Phrases</p>
               {analysis.phrases.length === 0 ? (
-                <p className="text-xs text-text-secondary">No recurring phrases found.</p>
+                <p className="text-xs text-slate-400">No recurring phrases found.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  {analysis.phrases.map(({ phrase, count }) => (
+                  {analysis.phrases.map(({ phrase, count }, i) => (
                     <span
                       key={phrase}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 rounded-full text-xs text-text-primary"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium text-slate-600 border border-slate-200 bg-slate-50 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-default"
+                      style={{ fontSize: i < 3 ? 13 : 11 }}
                     >
                       {phrase}
-                      <span className="bg-white text-brand-blue font-semibold px-1.5 py-0.5 rounded-full text-[10px]">
+                      <span className="bg-white border border-slate-200 text-blue-600 font-bold px-1.5 py-px rounded-full text-[10px]">
                         {count}
                       </span>
                     </span>
                   ))}
                 </div>
               )}
-            </Panel>
+            </Card>
 
-            {/* Panel 4: AI Topic Analysis */}
-            <Panel title="AI Topic Analysis">
-              {!aiOutput && !aiLoading && (
-                <div className="flex flex-col items-center justify-center py-6 gap-3">
-                  <Sparkles className="w-7 h-7 text-brand-blue opacity-60" />
-                  <p className="text-xs text-text-secondary text-center">
-                    Send responses to AI for deep theme and topic analysis
+            {/* Panel 4: AI topic analysis */}
+            <Card className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm font-semibold text-slate-700">AI Topic Analysis</p>
+                {aiOutput && !aiLoading && (
+                  <button onClick={runAiAnalysis} className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-600 transition-colors">
+                    <RefreshCw className="w-3 h-3" /> Re-run
+                  </button>
+                )}
+              </div>
+
+              {!aiOutput && !aiLoading && !aiError && (
+                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <p className="text-xs text-slate-400 text-center leading-relaxed max-w-[200px]">
+                    Send all responses to AI for deep theme and topic analysis
                   </p>
                   <button
                     onClick={runAiAnalysis}
-                    className="flex items-center gap-2 px-4 py-2 bg-brand-blue text-white text-xs font-medium rounded-lg hover:bg-brand-blue/90 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-sm shadow-blue-200"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Analyse Topics with AI
+                    <Sparkles className="w-3.5 h-3.5" /> Analyse with AI
                   </button>
                 </div>
               )}
+
               {aiLoading && (
-                <div className="flex flex-col items-center justify-center py-8 gap-2">
-                  <Loader2 className="w-5 h-5 text-brand-blue animate-spin" />
-                  <p className="text-xs text-text-secondary">Analysing…</p>
+                <div className="flex flex-col items-center justify-center py-10 gap-3">
+                  <div className="w-8 h-8 rounded-2xl bg-blue-50 flex items-center justify-center">
+                    <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                  </div>
+                  <p className="text-xs text-slate-400">Analysing {analysis.total} responses…</p>
                 </div>
               )}
+
               {aiError && (
                 <div className="space-y-3">
-                  <div className="flex items-start gap-2 p-3 bg-red-50 rounded-lg">
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                    <p className="text-xs text-red-700">{aiError}</p>
+                  <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-xl">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-600">{aiError}</p>
                   </div>
-                  <button onClick={runAiAnalysis} className="flex items-center gap-1.5 text-xs text-brand-blue hover:underline">
+                  <button onClick={runAiAnalysis} className="flex items-center gap-1.5 text-xs text-blue-600 hover:underline">
                     <RefreshCw className="w-3 h-3" /> Retry
                   </button>
                 </div>
               )}
+
               {aiOutput && !aiLoading && (
-                <div className="space-y-3">
-                  <div className="prose prose-sm max-w-none text-sm">
-                    {renderMarkdown(aiOutput)}
-                  </div>
-                  <button onClick={runAiAnalysis} className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-brand-blue transition-colors">
-                    <RefreshCw className="w-3 h-3" /> Re-analyse
-                  </button>
+                <div className="prose prose-sm max-w-none text-sm leading-relaxed">
+                  {renderMarkdown(aiOutput)}
                 </div>
               )}
-            </Panel>
+            </Card>
           </div>
 
-          {/* Topic Search & Focused FTA */}
-          <div className="bg-white border border-border rounded-xl p-5 space-y-5">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Search className="w-4 h-4 text-brand-blue" />
-                <h3 className="text-sm font-semibold text-text-primary">Topic Search</h3>
+          {/* ── Topic Search ── */}
+          <Card className="overflow-hidden">
+            {/* Search header */}
+            <div className="px-6 pt-6 pb-5 border-b border-slate-100">
+              <div className="flex items-center gap-3 mb-1.5">
+                <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
+                  <Search className="w-3.5 h-3.5 text-violet-600" />
+                </div>
+                <h3 className="text-sm font-semibold text-slate-700">Topic Search</h3>
               </div>
-              <p className="text-xs text-text-secondary">
-                Describe what you're looking for in plain English — AI expands your description into every related term, runs full sentiment + keyword analysis on matched responses, then reviews each result for true relevance.
+              <p className="text-xs text-slate-400 ml-10">
+                Describe what you're looking for — AI expands it into related terms, finds matching responses, then reviews each result for genuine relevance.
               </p>
             </div>
 
-            {/* Input */}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && runFocusedSearch()}
-                placeholder='e.g. "kids softplay", "find comments about queue wait times", "food and drink"'
-                className="flex-1 px-3 py-2 text-sm border border-border rounded-lg outline-none focus:border-brand-blue bg-white text-text-primary placeholder:text-text-muted"
-              />
-              <button
-                onClick={runFocusedSearch}
-                disabled={!searchQuery.trim() || searchLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-brand-blue text-white text-xs font-medium rounded-lg hover:bg-brand-blue/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-              >
-                {searchLoading
-                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Searching…</>
-                  : <><Search className="w-3.5 h-3.5" /> Search</>}
-              </button>
-            </div>
-
-            {/* Expanded terms */}
-            {expandedTerms.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 p-3 bg-blue-50 rounded-lg">
-                <span className="text-[11px] text-blue-600 font-medium self-center mr-1 shrink-0">AI expanded to:</span>
-                {expandedTerms.map(term => (
-                  <span key={term} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-blue-200 rounded-full text-[11px] text-blue-700">
-                    {term}
-                    <button onClick={() => removeTerm(term)} className="hover:text-red-500 transition-colors">
-                      <X className="w-2.5 h-2.5" />
-                    </button>
-                  </span>
-                ))}
+            <div className="p-6 space-y-5">
+              {/* Search input */}
+              <div className="flex gap-2.5">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && runFocusedSearch()}
+                    placeholder='e.g. "kids softplay", "queue wait times", "food and drink quality"'
+                    className="w-full pl-10 pr-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-slate-700 placeholder:text-slate-300 transition-all"
+                  />
+                </div>
+                <button
+                  onClick={runFocusedSearch}
+                  disabled={!searchQuery.trim() || searchLoading}
+                  className="flex items-center gap-2 px-5 py-3 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-blue-200 whitespace-nowrap"
+                >
+                  {searchLoading
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Searching…</>
+                    : <><Search className="w-3.5 h-3.5" /> Search</>}
+                </button>
               </div>
-            )}
 
-            {searchError && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                <p className="text-xs text-red-700">{searchError}</p>
-              </div>
-            )}
+              {/* Detected intent badge */}
+              {detectedIntent && (
+                <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-xs font-medium ${
+                  detectedIntent.sentimentIntent === 'negative'
+                    ? 'bg-red-50 border-red-200 text-red-700'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${
+                    detectedIntent.sentimentIntent === 'negative' ? 'bg-red-400' : 'bg-emerald-400'
+                  }`} />
+                  Searching for <strong className="mx-0.5">{detectedIntent.sentimentIntent}</strong> responses about
+                  <strong className="ml-0.5">"{detectedIntent.topic}"</strong>
+                  <span className="ml-auto text-[10px] opacity-60">Sentiment pre-filtered · AI will confirm each result</span>
+                </div>
+              )}
 
-            {/* ── Focused FTA results ── */}
-            {focusedAnalysis && searchResults !== null && (
-              <div className="space-y-5 pt-2 border-t border-border">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-text-primary">
-                    Focused Analysis
-                    <span className="ml-2 text-xs font-normal text-text-secondary">
-                      — {focusedAnalysis.total} matching response{focusedAnalysis.total !== 1 ? 's' : ''}
-                    </span>
+              {/* Expanded terms */}
+              {expandedTerms.length > 0 && (
+                <div className="p-3.5 bg-violet-50 border border-violet-100 rounded-xl">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-violet-400 mb-2.5">
+                    AI expanded to {expandedTerms.length} search terms
                   </p>
-                </div>
-
-                {/* Sentiment mini-dashboard */}
-                <div className="grid grid-cols-3 gap-3">
-                  {SENTIMENT_LABELS.map(label => (
-                    <div key={label} className="bg-slate-50 rounded-lg p-3 text-center">
-                      <p className="text-xl font-bold" style={{ color: SENTIMENT_COLOURS[label] }}>
-                        {focusedAnalysis.sentimentCounts[label]}
-                      </p>
-                      <p className="text-[11px] text-text-secondary capitalize mt-0.5">{label}</p>
-                      <p className="text-[10px] text-text-muted">
-                        {Math.round(focusedAnalysis.sentimentCounts[label] / focusedAnalysis.total * 100)}%
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Keywords + Phrases side by side */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-2">Top Keywords</p>
-                    {focusedAnalysis.keywords.length === 0
-                      ? <p className="text-xs text-text-muted">Not enough data.</p>
-                      : <ResponsiveContainer width="100%" height={200}>
-                          <BarChart data={focusedAnalysis.keywords.slice(0, 10).reverse()} layout="vertical" margin={{ left: 4, right: 12, top: 0, bottom: 0 }}>
-                            <XAxis type="number" tick={{ fontSize: 10 }} />
-                            <YAxis type="category" dataKey="word" tick={{ fontSize: 10 }} width={72} />
-                            <Tooltip formatter={v => [v, 'count']} />
-                            <Bar dataKey="count" radius={[0, 3, 3, 0]}>
-                              {focusedAnalysis.keywords.slice(0, 10).map((_, i) => (
-                                <Cell key={i} fill="#2563EB" fillOpacity={0.6 + i * 0.04} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                    }
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-2">Key Phrases</p>
-                    {focusedAnalysis.phrases.length === 0
-                      ? <p className="text-xs text-text-muted">No recurring phrases.</p>
-                      : <div className="flex flex-wrap gap-1.5">
-                          {focusedAnalysis.phrases.map(({ phrase, count }) => (
-                            <span key={phrase} className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-full text-xs text-text-primary">
-                              {phrase}
-                              <span className="bg-white text-brand-blue font-semibold px-1 rounded-full text-[10px]">{count}</span>
-                            </span>
-                          ))}
-                        </div>
-                    }
-                  </div>
-                </div>
-
-                {/* AI deep-dive */}
-                <div className="border border-border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-brand-blue" /> AI Deep-Dive
-                    </p>
-                    {focusedAiOutput && !focusedAiLoading && (
-                      <button onClick={runFocusedAiAnalysis} className="flex items-center gap-1 text-[11px] text-text-secondary hover:text-brand-blue">
-                        <RefreshCw className="w-3 h-3" /> Re-analyse
-                      </button>
-                    )}
-                  </div>
-                  {!focusedAiOutput && !focusedAiLoading && !focusedAiError && (
-                    <div className="flex flex-col items-center gap-2 py-4">
-                      <p className="text-xs text-text-secondary text-center">
-                        Get AI analysis of only these {focusedAnalysis.total} matched responses
-                      </p>
-                      <button
-                        onClick={runFocusedAiAnalysis}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-brand-blue text-white text-xs font-medium rounded-lg hover:bg-brand-blue/90 transition-colors"
+                  <div className="flex flex-wrap gap-1.5">
+                    {expandedTerms.map(term => (
+                      <span
+                        key={term}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-violet-200 rounded-full text-[11px] text-violet-700 font-medium shadow-xs"
                       >
-                        <Sparkles className="w-3.5 h-3.5" /> Analyse with AI
-                      </button>
-                    </div>
-                  )}
-                  {focusedAiLoading && (
-                    <div className="flex items-center gap-2 py-4 justify-center">
-                      <Loader2 className="w-4 h-4 text-brand-blue animate-spin" />
-                      <p className="text-xs text-text-secondary">Analysing {focusedAnalysis.total} responses…</p>
-                    </div>
-                  )}
-                  {focusedAiError && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 p-2 bg-red-50 rounded">
-                        <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                        <p className="text-xs text-red-700">{focusedAiError}</p>
-                      </div>
-                      <button onClick={runFocusedAiAnalysis} className="text-xs text-brand-blue hover:underline flex items-center gap-1">
-                        <RefreshCw className="w-3 h-3" /> Retry
-                      </button>
-                    </div>
-                  )}
-                  {focusedAiOutput && !focusedAiLoading && (
-                    <div className="prose prose-sm max-w-none text-sm">
-                      {renderMarkdown(focusedAiOutput)}
-                    </div>
-                  )}
-                </div>
-
-                {/* ── Matched responses with relevance verdicts ── */}
-                <div>
-                  {/* Section header + relevance summary */}
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
-                        Matched Responses
-                      </p>
-                      {relevanceLoading && (
-                        <span className="flex items-center gap-1 text-[11px] text-blue-500">
-                          <Loader2 className="w-3 h-3 animate-spin" /> AI reviewing relevance…
-                        </span>
-                      )}
-                      {relevanceSummary && !relevanceLoading && (
-                        <span className="flex items-center gap-2 text-[11px]">
-                          <span className="flex items-center gap-0.5 text-emerald-600">
-                            <CheckCircle2 className="w-3 h-3" /> {relevanceSummary.confirmed} relevant
-                          </span>
-                          <span className="text-text-muted">·</span>
-                          <span className="flex items-center gap-0.5 text-red-500">
-                            <XCircle className="w-3 h-3" /> {relevanceSummary.rejected} not relevant
-                          </span>
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {relevanceSummary && !relevanceLoading && (
+                        {term}
                         <button
-                          onClick={() => setShowOnlyRelevant(v => !v)}
-                          className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
-                            showOnlyRelevant
-                              ? 'bg-emerald-600 text-white border-emerald-600'
-                              : 'text-text-secondary border-border hover:border-emerald-500 hover:text-emerald-600'
-                          }`}
+                          onClick={() => removeTerm(term)}
+                          className="text-violet-300 hover:text-red-400 transition-colors"
                         >
-                          {showOnlyRelevant ? 'Showing relevant only' : 'Show relevant only'}
+                          <X className="w-2.5 h-2.5" />
                         </button>
-                      )}
-                      <button
-                        onClick={exportResults}
-                        className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md border border-border text-text-secondary hover:border-brand-blue hover:text-brand-blue transition-colors"
-                      >
-                        <Download className="w-3 h-3" /> Export Excel
-                      </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {searchError && (
+                <div className="flex items-center gap-2.5 p-3.5 bg-red-50 border border-red-100 rounded-xl">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  <p className="text-xs text-red-600">{searchError}</p>
+                </div>
+              )}
+
+              {/* Idle state */}
+              {searchResults === null && !searchLoading && (
+                <div className="flex flex-col items-center justify-center py-10 gap-3 text-slate-300">
+                  <Search className="w-8 h-8" />
+                  <p className="text-xs">Describe any topic above to search the responses</p>
+                </div>
+              )}
+
+              {/* ── Focused FTA ── */}
+              {focusedAnalysis && searchResults !== null && (
+                <div className="space-y-6 pt-1">
+
+                  {/* Result header */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-slate-100" />
+                    <span className="text-[11px] text-slate-400 font-medium shrink-0">
+                      {focusedAnalysis.total} matching response{focusedAnalysis.total !== 1 ? 's' : ''} found
+                    </span>
+                    <div className="flex-1 h-px bg-slate-100" />
+                  </div>
+
+                  {/* Focused sentiment stats */}
+                  <div className="grid grid-cols-3 gap-3">
+                    {SENTIMENT_LABELS.map(label => {
+                      const count = focusedAnalysis.sentimentCounts[label]
+                      const pct   = Math.round(count / focusedAnalysis.total * 100)
+                      return (
+                        <div key={label} className={`rounded-xl p-3.5 border ${SENTIMENT_BG[label]} ${SENTIMENT_BORDER[label]}`}>
+                          <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${SENTIMENT_TEXT[label]}`}>{label}</p>
+                          <p className={`text-2xl font-black ${SENTIMENT_TEXT[label]}`}>{count}</p>
+                          <div className="mt-2 h-1 rounded-full bg-white/60 overflow-hidden">
+                            <div className={`h-full rounded-full ${SENTIMENT_BAR[label]}`} style={{ width: `${pct}%` }} />
+                          </div>
+                          <p className={`text-[10px] mt-1 font-medium ${SENTIMENT_TEXT[label]} opacity-70`}>{pct}%</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Keywords + Phrases */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <SectionLabel>Top keywords in results</SectionLabel>
+                      {focusedAnalysis.keywords.length === 0
+                        ? <p className="text-xs text-slate-400">Not enough data.</p>
+                        : (
+                          <ResponsiveContainer width="100%" height={200}>
+                            <BarChart
+                              data={focusedAnalysis.keywords.slice(0, 10).reverse()}
+                              layout="vertical"
+                              margin={{ left: 0, right: 12, top: 0, bottom: 0 }}
+                            >
+                              <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                              <YAxis type="category" dataKey="word" tick={{ fontSize: 10, fill: '#64748b' }} width={68} axisLine={false} tickLine={false} />
+                              <Tooltip
+                                contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.10)', fontSize: 12 }}
+                                formatter={v => [`${v} occurrences`, 'Count']}
+                                cursor={{ fill: '#f8fafc' }}
+                              />
+                              <Bar dataKey="count" radius={[0, 5, 5, 0]} maxBarSize={14}>
+                                {focusedAnalysis.keywords.slice(0, 10).map((_, i) => (
+                                  <Cell key={i} fill="#8b5cf6" fillOpacity={0.5 + i * 0.045} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        )
+                      }
+                    </div>
+                    <div>
+                      <SectionLabel>Recurring phrases</SectionLabel>
+                      {focusedAnalysis.phrases.length === 0
+                        ? <p className="text-xs text-slate-400">No recurring phrases.</p>
+                        : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {focusedAnalysis.phrases.map(({ phrase, count }) => (
+                              <span key={phrase} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-xs font-medium text-slate-600">
+                                {phrase}
+                                <span className="bg-white border border-slate-200 text-violet-600 font-bold px-1.5 rounded-full text-[10px]">{count}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )
+                      }
                     </div>
                   </div>
 
-                  <div className="divide-y divide-border">
-                    {displayedResults.length === 0 ? (
-                      <p className="text-xs text-text-secondary py-4 text-center">
-                        {showOnlyRelevant ? 'No responses confirmed relevant yet — AI review may still be running.' : 'No results.'}
-                      </p>
-                    ) : (
-                      displayedResults.map(({ text, idx, normScore }, i) => {
-                        const verdict = relevanceVerdicts[idx]
-                        const isChecked = verdict !== undefined
-                        return (
-                          <div key={idx} className={`py-3 flex items-start gap-3 ${isChecked && !verdict.relevant ? 'opacity-50' : ''}`}>
-                            {/* BM25 score bar */}
-                            <div className="w-1 self-stretch rounded-full bg-slate-100 relative shrink-0">
-                              <div className="absolute bottom-0 left-0 w-full rounded-full bg-brand-blue" style={{ height: `${Math.round(normScore * 100)}%` }} />
+                  {/* AI deep-dive */}
+                  <Card className="border-dashed">
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-amber-100 flex items-center justify-center">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                          </div>
+                          <p className="text-xs font-semibold text-slate-700">AI Deep-Dive</p>
+                          <span className="text-[10px] text-slate-400">— scoped to these {focusedAnalysis.total} responses</span>
+                        </div>
+                        {focusedAiOutput && !focusedAiLoading && (
+                          <button onClick={runFocusedAiAnalysis} className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-600 transition-colors">
+                            <RefreshCw className="w-3 h-3" /> Re-run
+                          </button>
+                        )}
+                      </div>
+
+                      {!focusedAiOutput && !focusedAiLoading && !focusedAiError && (
+                        <div className="flex items-center justify-between p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                          <p className="text-xs text-amber-700">Get a focused AI analysis of only these matched responses</p>
+                          <button
+                            onClick={runFocusedAiAnalysis}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 active:scale-95 transition-all shrink-0 ml-3"
+                          >
+                            <Sparkles className="w-3 h-3" /> Analyse
+                          </button>
+                        </div>
+                      )}
+
+                      {focusedAiLoading && (
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                          <Loader2 className="w-4 h-4 text-blue-500 animate-spin shrink-0" />
+                          <p className="text-xs text-slate-500">Analysing {focusedAnalysis.total} responses…</p>
+                        </div>
+                      )}
+
+                      {focusedAiError && (
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-xl">
+                            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                            <p className="text-xs text-red-600">{focusedAiError}</p>
+                          </div>
+                          <button onClick={runFocusedAiAnalysis} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                            <RefreshCw className="w-3 h-3" /> Retry
+                          </button>
+                        </div>
+                      )}
+
+                      {focusedAiOutput && !focusedAiLoading && (
+                        <div className="prose prose-sm max-w-none text-sm leading-relaxed">
+                          {renderMarkdown(focusedAiOutput)}
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+
+                  {/* ── Matched responses ── */}
+                  <div>
+                    {/* Controls bar */}
+                    <div className="space-y-3 mb-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <SectionLabel>Matched responses</SectionLabel>
+                          {relevanceLoading && (
+                            <span className="flex items-center gap-1.5 text-[11px] text-violet-500 -mt-3">
+                              <Loader2 className="w-3 h-3 animate-spin" /> reviewing relevance…
+                            </span>
+                          )}
+                          {relevanceSummary && !relevanceLoading && (
+                            <div className="flex items-center gap-2 -mt-3">
+                              <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
+                                <CheckCircle2 className="w-3 h-3" /> {relevanceSummary.confirmed} confirmed
+                              </span>
+                              <span className="text-slate-200">·</span>
+                              <span className="flex items-center gap-1 text-[11px] text-red-400 font-medium">
+                                <XCircle className="w-3 h-3" /> {relevanceSummary.rejected} filtered out
+                              </span>
                             </div>
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <p className="text-sm text-text-primary leading-relaxed">{highlightText(text, expandedTerms)}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {relevanceSummary && !relevanceLoading && (
+                            <button
+                              onClick={() => setShowOnlyRelevant(v => !v)}
+                              className={`text-[11px] px-3 py-1.5 rounded-lg font-semibold border transition-all ${
+                                showOnlyRelevant
+                                  ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm shadow-emerald-200'
+                                  : 'text-slate-500 border-slate-200 hover:border-emerald-400 hover:text-emerald-600'
+                              }`}
+                            >
+                              {showOnlyRelevant ? '✓ Relevant only' : 'Show relevant only'}
+                            </button>
+                          )}
+                          <button
+                            onClick={exportResults}
+                            className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium"
+                          >
+                            <Download className="w-3 h-3" /> Export
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Sentiment filter */}
+                      <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl w-fit">
+                        {['all', 'positive', 'negative', 'neutral'].map(f => (
+                          <button
+                            key={f}
+                            onClick={() => setSearchSentimentFilter(f)}
+                            className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition-all capitalize ${
+                              searchSentimentFilter === f
+                                ? f === 'positive' ? 'bg-emerald-500 text-white shadow-sm'
+                                  : f === 'negative' ? 'bg-red-500 text-white shadow-sm'
+                                  : f === 'neutral' ? 'bg-slate-400 text-white shadow-sm'
+                                  : 'bg-white text-slate-700 shadow-sm'
+                                : 'text-slate-400 hover:text-slate-600'
+                            }`}
+                          >
+                            {f === 'all'
+                              ? `All · ${searchResults?.length ?? 0}`
+                              : `${f.charAt(0).toUpperCase() + f.slice(1)} · ${focusedAnalysis?.sentimentCounts[f] ?? 0}`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Result cards */}
+                    {displayedResults.length === 0 ? (
+                      <div className="flex flex-col items-center py-10 gap-2 text-slate-300">
+                        <Search className="w-6 h-6" />
+                        <p className="text-xs">{showOnlyRelevant ? 'No confirmed-relevant responses yet' : 'No results'}</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {displayedResults.map(({ text, idx, normScore }, i) => {
+                          const verdict   = relevanceVerdicts[idx]
+                          const isChecked = verdict !== undefined
+                          const siIdx     = searchResults.findIndex(r => r.idx === idx)
+                          const sentiment = focusedAnalysis.sentiments[siIdx]
+
+                          // Card left-border colour by relevance state
+                          const borderColor = isChecked
+                            ? verdict.relevant ? 'border-l-emerald-400' : 'border-l-red-300'
+                            : relevanceLoading && i < RELEVANCE_CAP ? 'border-l-blue-300' : 'border-l-slate-200'
+
+                          return (
+                            <div
+                              key={idx}
+                              className={`group bg-white border border-slate-100 border-l-4 rounded-xl px-4 py-3.5 shadow-xs hover:shadow-sm transition-all ${borderColor} ${isChecked && !verdict.relevant ? 'opacity-45' : ''}`}
+                            >
+                              {/* Response text */}
+                              <p className="text-sm text-slate-700 leading-relaxed mb-2.5">
+                                {highlightText(text, expandedTerms)}
+                              </p>
+
+                              {/* Footer row */}
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-[10px] text-text-muted">row {idx + 1} · {Math.round(normScore * 100)}% match</span>
+                                {/* Match pill */}
+                                <span className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 rounded-full text-[10px] font-semibold text-slate-500">
+                                  <TrendingUp className="w-2.5 h-2.5" />
+                                  {Math.round(normScore * 100)}% match
+                                </span>
+
+                                {/* Row number */}
+                                <span className="text-[10px] text-slate-300">row {idx + 1}</span>
+
+                                <div className="flex-1" />
+
                                 {/* Relevance verdict */}
                                 {relevanceLoading && i < RELEVANCE_CAP && !isChecked && (
-                                  <span className="flex items-center gap-0.5 text-[10px] text-blue-400">
+                                  <span className="flex items-center gap-1 text-[10px] text-blue-400">
                                     <Loader2 className="w-2.5 h-2.5 animate-spin" /> checking…
                                   </span>
                                 )}
                                 {isChecked && verdict.relevant && (
-                                  <span className="flex items-center gap-0.5 text-[10px] text-emerald-600 font-medium">
-                                    <CheckCircle2 className="w-3 h-3" /> {verdict.reason}
+                                  <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full text-[10px] text-emerald-600 font-medium">
+                                    <CheckCircle2 className="w-3 h-3 shrink-0" /> {verdict.reason}
                                   </span>
                                 )}
                                 {isChecked && !verdict.relevant && (
-                                  <span className="flex items-center gap-0.5 text-[10px] text-red-400">
-                                    <XCircle className="w-3 h-3" /> {verdict.reason}
+                                  <span className="flex items-center gap-1 px-2 py-0.5 bg-red-50 border border-red-200 rounded-full text-[10px] text-red-500 font-medium">
+                                    <XCircle className="w-3 h-3 shrink-0" /> {verdict.reason}
                                   </span>
                                 )}
+
+                                {/* Sentiment */}
+                                {sentiment && <SentimentBadge label={sentiment.label} size="xs" />}
                               </div>
                             </div>
-                            <SentimentBadge label={focusedAnalysis.sentiments[searchResults.indexOf(searchResults.find(r => r.idx === idx))]?.label || 'neutral'} />
-                          </div>
-                        )
-                      })
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {searchResults.length > RELEVANCE_CAP && relevanceSummary && (
+                      <div className="mt-3">
+                        <p className="text-[11px] text-slate-400">Relevance reviewed on first {RELEVANCE_CAP} results.</p>
+                      </div>
                     )}
                   </div>
-                  {searchResults.length > 50 && (
-                    <p className="text-[11px] text-text-muted mt-3">Showing top 50 of {searchResults.length} matches.</p>
-                  )}
-                  {searchResults.length > RELEVANCE_CAP && relevanceSummary && (
-                    <p className="text-[11px] text-text-muted mt-1">
-                      Relevance reviewed on first {RELEVANCE_CAP} results.
-                    </p>
-                  )}
                 </div>
-              </div>
-            )}
-
-            {/* Idle state */}
-            {searchResults === null && !searchLoading && (
-              <div className="flex flex-col items-center justify-center py-8 gap-2 text-text-secondary">
-                <Search className="w-7 h-7 opacity-20" />
-                <p className="text-xs opacity-60">Describe any topic above to begin</p>
-              </div>
-            )}
-          </div>
-
-          {/* Row explorer */}
-          <div className="bg-white border border-border rounded-xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-text-primary">Response Explorer</h3>
-              <div className="flex gap-1">
-                {['all', ...SENTIMENT_LABELS].map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setSentimentTab(tab)}
-                    className={`px-3 py-1 rounded-md text-xs font-medium transition-colors capitalize ${
-                      sentimentTab === tab
-                        ? 'bg-brand-blue text-white'
-                        : 'text-text-secondary hover:bg-slate-100'
-                    }`}
-                  >
-                    {tab === 'all'
-                      ? `All (${analysis.total})`
-                      : `${tab} (${analysis.sentimentCounts[tab]})`}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="divide-y divide-border">
-              {filteredRows.length === 0 ? (
-                <p className="text-xs text-text-secondary py-4">No responses in this category.</p>
-              ) : (
-                filteredRows.map(({ text, sentiment }, i) => (
-                  <div key={i} className="py-2.5 flex items-start gap-3">
-                    <span className="text-[11px] text-text-muted w-6 shrink-0 pt-0.5">{i + 1}</span>
-                    <p className="text-sm text-text-primary flex-1 leading-relaxed">{text}</p>
-                    <SentimentBadge label={sentiment.label} />
-                  </div>
-                ))
               )}
             </div>
-            {analysis.total > 50 && (
-              <p className="text-[11px] text-text-muted mt-3">
-                Showing first 50 of {analysis.total} responses.
+          </Card>
+
+          {/* ── Response Explorer ── */}
+          <Card>
+            <div className="px-6 pt-5 pb-4 border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center">
+                    <FileText className="w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700">Response Explorer</p>
+                </div>
+                <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+                  {['all', ...SENTIMENT_LABELS].map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setSentimentTab(tab)}
+                      className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition-all capitalize ${
+                        sentimentTab === tab
+                          ? 'bg-white text-slate-700 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      {tab === 'all'
+                        ? `All · ${analysis.total}`
+                        : `${tab.charAt(0).toUpperCase() + tab.slice(1)} · ${analysis.sentimentCounts[tab]}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4">
+              {filteredRows.length === 0 ? (
+                <p className="text-xs text-slate-400 py-4 text-center">No responses in this category.</p>
+              ) : (
+                <div className="space-y-1">
+                  {filteredRows.map(({ text, sentiment }, i) => (
+                    <div
+                      key={i}
+                      className="flex items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group"
+                    >
+                      <span className="text-[11px] text-slate-300 w-5 shrink-0 pt-0.5 font-mono tabular-nums">{i + 1}</span>
+                      <p className="text-sm text-slate-600 flex-1 leading-relaxed">{text}</p>
+                      <SentimentBadge label={sentiment.label} size="xs" />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-slate-400 mt-3 text-center">
+                {filteredRows.length.toLocaleString()} of {analysis.total.toLocaleString()} responses shown
               </p>
-            )}
-          </div>
+            </div>
+          </Card>
         </>
       )}
     </div>
