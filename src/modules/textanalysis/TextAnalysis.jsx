@@ -448,6 +448,29 @@ Be specific and reference actual phrases from the data where relevant.`
     [mustContainQuery]
   )
 
+  // Merged keywords + phrases for the "most mentioned" chart, with search terms filtered out
+  const topMentions = useMemo(() => {
+    if (!focusedAnalysis) return []
+    const lowerExpanded = new Set(expandedTerms.map(t => t.toLowerCase()))
+    const lowerQuery    = searchQuery.trim().toLowerCase().split(/\s+/).filter(w => w.length > 2)
+    const isExpanded    = (str) => lowerExpanded.has(str) || lowerQuery.some(q => str === q)
+
+    const phraseItems  = focusedAnalysis.phrases
+      .filter(p => !isExpanded(p.phrase.toLowerCase()))
+      .map(p => ({ label: p.phrase, count: p.count }))
+    const keywordItems = focusedAnalysis.keywords
+      .filter(k => !isExpanded(k.word.toLowerCase()))
+      .map(k => ({ label: k.word, count: k.count }))
+
+    const seen   = new Set()
+    const merged = [...phraseItems, ...keywordItems].filter(item => {
+      if (seen.has(item.label)) return false
+      seen.add(item.label)
+      return true
+    })
+    return merged.sort((a, b) => b.count - a.count).slice(0, 18)
+  }, [focusedAnalysis, expandedTerms, searchQuery])
+
   const displayedResults = useMemo(() => {
     if (!searchResults) return []
     let base = searchResults
@@ -981,52 +1004,50 @@ Be specific and reference actual phrases from the data where relevant.`
                     })}
                   </div>
 
-                  {/* Keywords + Phrases */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div>
-                      <SectionLabel>Top keywords in results</SectionLabel>
-                      {focusedAnalysis.keywords.length === 0
-                        ? <p className="text-xs text-slate-400">Not enough data.</p>
-                        : (
-                          <ResponsiveContainer width="100%" height={200}>
-                            <BarChart
-                              data={focusedAnalysis.keywords.slice(0, 10).reverse()}
-                              layout="vertical"
-                              margin={{ left: 0, right: 12, top: 0, bottom: 0 }}
-                            >
-                              <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                              <YAxis type="category" dataKey="word" tick={{ fontSize: 10, fill: '#64748b' }} width={68} axisLine={false} tickLine={false} />
-                              <Tooltip
-                                contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.10)', fontSize: 12 }}
-                                formatter={v => [`${v} occurrences`, 'Count']}
-                                cursor={{ fill: '#f8fafc' }}
+                  {/* ── Most mentioned about [topic] ── */}
+                  <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-700">
+                          Most mentioned about <span className="text-violet-600">"{searchQuery}"</span>
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Top co-occurring words &amp; phrases across {focusedAnalysis.total} responses
+                        </p>
+                      </div>
+                    </div>
+                    {topMentions.length === 0 ? (
+                      <p className="text-xs text-slate-400 py-4 text-center">Not enough data to show co-occurring terms.</p>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={Math.max(200, topMentions.length * 28)}>
+                        <BarChart
+                          data={[...topMentions].reverse()}
+                          layout="vertical"
+                          margin={{ left: 4, right: 40, top: 0, bottom: 0 }}
+                        >
+                          <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                          <YAxis
+                            type="category" dataKey="label"
+                            tick={{ fontSize: 11, fill: '#475569' }}
+                            width={110} axisLine={false} tickLine={false}
+                          />
+                          <Tooltip
+                            contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.10)', fontSize: 12 }}
+                            formatter={(v, _, props) => [`${v} mention${v !== 1 ? 's' : ''}`, props.payload.label]}
+                            cursor={{ fill: '#f5f3ff' }}
+                          />
+                          <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={18} label={{ position: 'right', fontSize: 10, fill: '#94a3b8' }}>
+                            {topMentions.map((_, i) => (
+                              <Cell
+                                key={i}
+                                fill="#8b5cf6"
+                                fillOpacity={0.35 + (topMentions.length - i) / topMentions.length * 0.55}
                               />
-                              <Bar dataKey="count" radius={[0, 5, 5, 0]} maxBarSize={14}>
-                                {focusedAnalysis.keywords.slice(0, 10).map((_, i) => (
-                                  <Cell key={i} fill="#8b5cf6" fillOpacity={0.5 + i * 0.045} />
-                                ))}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        )
-                      }
-                    </div>
-                    <div>
-                      <SectionLabel>Recurring phrases</SectionLabel>
-                      {focusedAnalysis.phrases.length === 0
-                        ? <p className="text-xs text-slate-400">No recurring phrases.</p>
-                        : (
-                          <div className="flex flex-wrap gap-1.5">
-                            {focusedAnalysis.phrases.map(({ phrase, count }) => (
-                              <span key={phrase} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-xs font-medium text-slate-600">
-                                {phrase}
-                                <span className="bg-white border border-slate-200 text-violet-600 font-bold px-1.5 rounded-full text-[10px]">{count}</span>
-                              </span>
                             ))}
-                          </div>
-                        )
-                      }
-                    </div>
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
                   </div>
 
                   {/* AI deep-dive */}
