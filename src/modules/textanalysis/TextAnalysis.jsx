@@ -22,7 +22,76 @@ const SENTIMENT_TEXT    = { positive: 'text-emerald-600', neutral: 'text-slate-5
 const SENTIMENT_BORDER  = { positive: 'border-emerald-200', neutral: 'border-slate-200', negative: 'border-red-200' }
 const SENTIMENT_BAR     = { positive: 'bg-emerald-400', neutral: 'bg-slate-300', negative: 'bg-red-400' }
 const SENTIMENT_LABELS  = ['positive', 'neutral', 'negative']
-const RELEVANCE_CAP     = 40
+const RELEVANCE_BATCH   = 40
+
+// ── Area presets (label → variant spellings) ─────────────────────
+const MUST_CONTAIN_PRESETS = {
+  fastpark: {
+    label: 'Fastpark',
+    color: 'indigo',
+    variants: ['fastpark', 'fast park', 'fast-park', 'faspark', 'fastpak', 'fastpar', 'fast pak', 'fstpark', 'fast prk', 'fastparkk'],
+  },
+  carpark: {
+    label: 'Car Park',
+    color: 'violet',
+    variants: ['car park', 'carpark', 'car-park', 'car parks', 'carparks', 'car prk', 'cark park', 'car prak', 'car par', 'car prak', 'carpar', 'multi-storey', 'multistorey', 'multi storey', 'short stay', 'long stay', 'short-stay', 'long-stay', 'car parking', 'carparking'],
+  },
+  checkin: {
+    label: 'Check-in',
+    color: 'sky',
+    variants: ['check-in', 'check in', 'checkin', 'checking in', 'checked in', 'check-ins', 'chek in', 'chceck in', 'chekc in', 'check inn', 'chck in', 'checin', 'chckin', 'check desk', 'check-in desk', 'baggage drop', 'bag drop', 'bag-drop', 'bagdrop', 'chek-in', 'chekkin', 'checckin'],
+  },
+  security: {
+    label: 'Security',
+    color: 'amber',
+    variants: ['security', 'securty', 'secuirty', 'secirity', 'securiy', 'secrity', 'secutiry', 'scurity', 'securitiy', 'securit', 'security check', 'security queue', 'security screening', 'security lane', 'scanner', 'body scanner', 'x-ray', 'xray', 'pat down', 'pat-down', 'secuirty check'],
+  },
+  gates: {
+    label: 'Gates',
+    color: 'teal',
+    variants: ['gate', 'gates', 'gated', 'boarding gate', 'departure gate', 'at the gate', 'gate lounge', 'gate area', 'boarding', 'board', 'boarded', 'boarding pass', 'boarding card', 'gate number', 'gaet', 'gtae', 'bording', 'borading', 'bordeing'],
+  },
+  departures: {
+    label: 'Departures',
+    color: 'blue',
+    variants: ['departure', 'departures', 'depertures', 'depatures', 'deparure', 'depature', 'departure lounge', 'departures lounge', 'departures hall', 'departure hall', 'outbound', 'depratures', 'dpeartures', 'departues', 'dpeatures'],
+  },
+  arrivals: {
+    label: 'Arrivals',
+    color: 'emerald',
+    variants: ['arrival', 'arrivals', 'arrivls', 'arivvals', 'arriving', 'arrived', 'arrivals hall', 'arrivals lounge', 'baggage reclaim', 'baggage claim', 'luggage reclaim', 'luggage claim', 'arival', 'arivals', 'arrivels', 'arrivels'],
+  },
+  staff: {
+    label: 'Staff',
+    color: 'rose',
+    variants: ['staff', 'staf', 'staaf', 'employee', 'employees', 'worker', 'workers', 'agent', 'agents', 'crew', 'personnel', 'team member', 'assistant', 'officer', 'guard', 'stff', 'staf member', 'stafff', 'memebr of staff', 'member of staff'],
+  },
+  passport: {
+    label: 'Passport Control',
+    color: 'orange',
+    variants: ['passport', 'passport control', 'border control', 'immigration', 'e-gate', 'egate', 'e gate', 'pasport', 'passort', 'passprt', 'passport controle', 'border force', 'uk border'],
+  },
+}
+
+function matchesPresets(text, presetKeys) {
+  const lower = text.toLowerCase()
+  return presetKeys.every(key => {
+    const preset = MUST_CONTAIN_PRESETS[key]
+    return preset?.variants.some(v => lower.includes(v))
+  })
+}
+
+const PRESET_COLOUR_MAP = {
+  indigo:  { chip: 'bg-indigo-600 text-white border-indigo-600',  inactive: 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50 hover:border-indigo-400' },
+  violet:  { chip: 'bg-violet-600 text-white border-violet-600',  inactive: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50 hover:border-violet-400' },
+  sky:     { chip: 'bg-sky-600 text-white border-sky-600',        inactive: 'bg-white text-sky-700 border-sky-200 hover:bg-sky-50 hover:border-sky-400' },
+  amber:   { chip: 'bg-amber-500 text-white border-amber-500',    inactive: 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50 hover:border-amber-400' },
+  teal:    { chip: 'bg-teal-600 text-white border-teal-600',      inactive: 'bg-white text-teal-700 border-teal-200 hover:bg-teal-50 hover:border-teal-400' },
+  blue:    { chip: 'bg-blue-600 text-white border-blue-600',      inactive: 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50 hover:border-blue-400' },
+  emerald: { chip: 'bg-emerald-600 text-white border-emerald-600',inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-400' },
+  rose:    { chip: 'bg-rose-600 text-white border-rose-600',      inactive: 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-400' },
+  orange:  { chip: 'bg-orange-500 text-white border-orange-500',  inactive: 'bg-white text-orange-700 border-orange-200 hover:bg-orange-50 hover:border-orange-400' },
+}
 
 // ── Sub-components ───────────────────────────────────────────────
 
@@ -106,6 +175,9 @@ export default function TextAnalysis() {
   const [showOnlyRelevant, setShowOnlyRelevant]   = useState(false)
   const [searchSentimentFilter, setSearchSentimentFilter] = useState('all')
   const [detectedIntent, setDetectedIntent]       = useState(null) // { sentimentIntent, topic }
+  const [selectedPhrases, setSelectedPhrases]     = useState([])
+  const [mustContainQuery, setMustContainQuery]   = useState('')
+  const [selectedMustPresets, setSelectedMustPresets] = useState([])
 
   const expandCacheRef = useRef({})
 
@@ -129,19 +201,21 @@ export default function TextAnalysis() {
     if (!results.length) return
     setRelevanceLoading(true)
     setRelevanceVerdicts({})
-    const cap      = results.slice(0, RELEVANCE_CAP)
-    const numbered = cap.map((r, i) => `${i + 1}. ${r.text}`).join('\n')
 
     const sentimentClause = sentimentIntent
       ? `The analyst specifically wants ${sentimentIntent} responses. A result is only relevant if it is both about the topic AND ${sentimentIntent} in tone. `
       : ''
 
-    const prompt   = `You are reviewing customer feedback from Edinburgh Airport. A team member searched for: "${query}"
+    try {
+      for (let batchStart = 0; batchStart < results.length; batchStart += RELEVANCE_BATCH) {
+        const batch   = results.slice(batchStart, batchStart + RELEVANCE_BATCH)
+        const numbered = batch.map((r, i) => `${i + 1}. ${r.text}`).join('\n')
+        const prompt  = `You are reviewing customer feedback from Edinburgh Airport. A team member searched for: "${query}"
 
-${sentimentClause}The system returned ${cap.length} responses as potential matches. For each response below, decide if it is genuinely relevant to the search (matching both topic and${sentimentIntent ? ` ${sentimentIntent} sentiment` : ' intent'}) or a false match.
+${sentimentClause}The system returned ${batch.length} responses as potential matches. For each response below, decide if it is genuinely relevant to the search (matching both topic and${sentimentIntent ? ` ${sentimentIntent} sentiment` : ' intent'}) or a false match.
 
 Return ONLY a valid JSON array. Each item must have:
-- "n": the response number (1 to ${cap.length})
+- "n": the response number (1 to ${batch.length})
 - "relevant": true or false
 - "reason": a concise 4-8 word explanation
 
@@ -150,22 +224,22 @@ ${numbered}
 
 Return ONLY the JSON array, no markdown, no explanation.`
 
-    try {
-      const res = await fetch('/api/insights', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, maxTokens: 900 }),
-      })
-      if (!res.ok) throw new Error(`API error ${res.status}`)
-      const { content } = await res.json()
-      const match = content.match(/\[[\s\S]*?\]/)
-      if (!match) throw new Error('Unexpected format')
-      const parsed = JSON.parse(match[0])
-      const map = {}
-      for (const item of parsed) {
-        if (typeof item.n === 'number' && item.n >= 1 && item.n <= cap.length)
-          map[cap[item.n - 1].idx] = { relevant: !!item.relevant, reason: item.reason || '' }
+        const res = await fetch('/api/insights', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, maxTokens: 900 }),
+        })
+        if (!res.ok) continue
+        const { content } = await res.json()
+        const match = content.match(/\[[\s\S]*?\]/)
+        if (!match) continue
+        const parsed = JSON.parse(match[0])
+        const batchMap = {}
+        for (const item of parsed) {
+          if (typeof item.n === 'number' && item.n >= 1 && item.n <= batch.length)
+            batchMap[batch[item.n - 1].idx] = { relevant: !!item.relevant, reason: item.reason || '' }
+        }
+        setRelevanceVerdicts(prev => ({ ...prev, ...batchMap }))
       }
-      setRelevanceVerdicts(map)
     } catch (_e) {
       // silently fail
     } finally {
@@ -195,6 +269,7 @@ Return ONLY the JSON array, no markdown, no explanation.`
     setSearchError(null); setFocusedAnalysis(null); setFocusedAiOutput('')
     setFocusedAiError(null); setRelevanceVerdicts({}); setRelevanceLoading(false)
     setShowOnlyRelevant(false); setSearchSentimentFilter('all'); setDetectedIntent(null)
+    setSelectedPhrases([]); setMustContainQuery(''); setSelectedMustPresets([])
   }, [])
 
   const runFocusedSearch = useCallback(async () => {
@@ -351,16 +426,27 @@ Be specific and reference actual phrases from the data where relevant.`
 
   const filteredRows = useMemo(() => {
     if (!analysis) return []
-    const pairs = analysis.texts.map((text, i) => ({ text, sentiment: analysis.sentiments[i] }))
-    if (sentimentTab === 'all') return pairs
-    return pairs.filter(p => p.sentiment.label === sentimentTab)
-  }, [analysis, sentimentTab])
+    let pairs = analysis.texts.map((text, i) => ({ text, sentiment: analysis.sentiments[i] }))
+    if (sentimentTab !== 'all') pairs = pairs.filter(p => p.sentiment.label === sentimentTab)
+    if (selectedPhrases.length > 0) {
+      pairs = pairs.filter(p => selectedPhrases.every(phrase => p.text.toLowerCase().includes(phrase.toLowerCase())))
+    }
+    if (selectedMustPresets.length > 0) {
+      pairs = pairs.filter(p => matchesPresets(p.text, selectedMustPresets))
+    }
+    return pairs
+  }, [analysis, sentimentTab, selectedPhrases, selectedMustPresets])
 
   const relevanceSummary = useMemo(() => {
     const vals = Object.values(relevanceVerdicts)
     if (!vals.length) return null
     return { confirmed: vals.filter(v => v.relevant).length, rejected: vals.filter(v => !v.relevant).length, total: vals.length }
   }, [relevanceVerdicts])
+
+  const mustContainWords = useMemo(() =>
+    mustContainQuery.trim().toLowerCase().split(/[\s,]+/).filter(w => w.length > 0),
+    [mustContainQuery]
+  )
 
   const displayedResults = useMemo(() => {
     if (!searchResults) return []
@@ -374,8 +460,14 @@ Be specific and reference actual phrases from the data where relevant.`
         return focusedAnalysis.sentiments[siIdx]?.label === searchSentimentFilter
       })
     }
+    if (mustContainWords.length > 0) {
+      base = base.filter(r => mustContainWords.every(w => r.text.toLowerCase().includes(w)))
+    }
+    if (selectedMustPresets.length > 0) {
+      base = base.filter(r => matchesPresets(r.text, selectedMustPresets))
+    }
     return base
-  }, [searchResults, showOnlyRelevant, relevanceVerdicts, relevanceSummary, searchSentimentFilter, focusedAnalysis])
+  }, [searchResults, showOnlyRelevant, relevanceVerdicts, relevanceSummary, searchSentimentFilter, focusedAnalysis, mustContainWords, selectedMustPresets])
 
   function exportResults() {
     if (!searchResults || !focusedAnalysis) return
@@ -586,23 +678,51 @@ Be specific and reference actual phrases from the data where relevant.`
 
             {/* Panel 3: Key phrases */}
             <Card className="p-5">
-              <p className="text-sm font-semibold text-slate-700 mb-4">Recurring Phrases</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-sm font-semibold text-slate-700">Recurring Phrases</p>
+                {selectedPhrases.length > 0 && (
+                  <button
+                    onClick={() => setSelectedPhrases([])}
+                    className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    <X className="w-3 h-3" /> Clear filters
+                  </button>
+                )}
+              </div>
+              {selectedPhrases.length > 0 && (
+                <p className="text-[10px] text-blue-500 mb-3">Filtering responses by {selectedPhrases.length} phrase{selectedPhrases.length > 1 ? 's' : ''}</p>
+              )}
+              {!selectedPhrases.length && (
+                <p className="text-[10px] text-slate-400 mb-3">Click a phrase to filter the Response Explorer</p>
+              )}
               {analysis.phrases.length === 0 ? (
                 <p className="text-xs text-slate-400">No recurring phrases found.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  {analysis.phrases.map(({ phrase, count }, i) => (
-                    <span
-                      key={phrase}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium text-slate-600 border border-slate-200 bg-slate-50 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-default"
-                      style={{ fontSize: i < 3 ? 13 : 11 }}
-                    >
-                      {phrase}
-                      <span className="bg-white border border-slate-200 text-blue-600 font-bold px-1.5 py-px rounded-full text-[10px]">
-                        {count}
-                      </span>
-                    </span>
-                  ))}
+                  {analysis.phrases.map(({ phrase, count }, i) => {
+                    const isActive = selectedPhrases.includes(phrase)
+                    return (
+                      <button
+                        key={phrase}
+                        onClick={() => setSelectedPhrases(prev =>
+                          isActive ? prev.filter(p => p !== phrase) : [...prev, phrase]
+                        )}
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full font-medium border transition-all ${
+                          isActive
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-200'
+                            : 'text-slate-600 border-slate-200 bg-slate-50 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50'
+                        }`}
+                        style={{ fontSize: i < 3 ? 13 : 11 }}
+                      >
+                        {phrase}
+                        <span className={`font-bold px-1.5 py-px rounded-full text-[10px] ${
+                          isActive ? 'bg-white/20 text-white' : 'bg-white border border-slate-200 text-blue-600'
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </Card>
@@ -681,27 +801,97 @@ Be specific and reference actual phrases from the data where relevant.`
 
             <div className="p-6 space-y-5">
               {/* Search input */}
-              <div className="flex gap-2.5">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 pointer-events-none" />
+              <div className="space-y-2.5">
+                <div className="flex gap-2.5">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && runFocusedSearch()}
+                      placeholder='e.g. "kids softplay", "queue wait times", "food and drink quality"'
+                      className="w-full pl-10 pr-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-slate-700 placeholder:text-slate-300 transition-all"
+                    />
+                  </div>
+                  <button
+                    onClick={runFocusedSearch}
+                    disabled={!searchQuery.trim() || searchLoading}
+                    className="flex items-center gap-2 px-5 py-3 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-blue-200 whitespace-nowrap"
+                  >
+                    {searchLoading
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Searching…</>
+                      : <><Search className="w-3.5 h-3.5" /> Search</>}
+                  </button>
+                </div>
+                {/* Must-contain filter */}
+                <div className="relative">
+                  <Hash className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-300 pointer-events-none" />
                   <input
                     type="text"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && runFocusedSearch()}
-                    placeholder='e.g. "kids softplay", "queue wait times", "food and drink quality"'
-                    className="w-full pl-10 pr-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-slate-700 placeholder:text-slate-300 transition-all"
+                    value={mustContainQuery}
+                    onChange={e => setMustContainQuery(e.target.value)}
+                    placeholder='Must contain words (e.g. "staff rude") — filters results to only responses containing these words'
+                    className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 text-slate-700 placeholder:text-slate-300 transition-all"
                   />
+                  {mustContainQuery && (
+                    <button
+                      onClick={() => setMustContainQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-red-400 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
-                <button
-                  onClick={runFocusedSearch}
-                  disabled={!searchQuery.trim() || searchLoading}
-                  className="flex items-center gap-2 px-5 py-3 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-blue-200 whitespace-nowrap"
-                >
-                  {searchLoading
-                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Searching…</>
-                    : <><Search className="w-3.5 h-3.5" /> Search</>}
-                </button>
+                {mustContainWords.length > 0 && searchResults !== null && (
+                  <p className="text-[10px] text-amber-600 flex items-center gap-1.5">
+                    <Hash className="w-3 h-3" />
+                    Must-contain active: <strong>{mustContainWords.join(', ')}</strong> — showing {displayedResults.length} of {searchResults.length} results
+                  </p>
+                )}
+
+                {/* Area presets */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Area filters — fuzzy match on misspellings
+                    </p>
+                    {selectedMustPresets.length > 0 && (
+                      <button
+                        onClick={() => setSelectedMustPresets([])}
+                        className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-red-400 transition-colors"
+                      >
+                        <X className="w-3 h-3" /> Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(MUST_CONTAIN_PRESETS).map(([key, preset]) => {
+                      const isActive = selectedMustPresets.includes(key)
+                      const colours  = PRESET_COLOUR_MAP[preset.color]
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => setSelectedMustPresets(prev =>
+                            isActive ? prev.filter(k => k !== key) : [...prev, key]
+                          )}
+                          title={`Matches: ${preset.variants.slice(0, 6).join(', ')}…`}
+                          className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all ${
+                            isActive ? colours.chip : colours.inactive
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {selectedMustPresets.length > 0 && (
+                    <p className="text-[10px] text-slate-400 mt-2">
+                      Filtering to responses mentioning: <strong className="text-slate-600">{selectedMustPresets.map(k => MUST_CONTAIN_PRESETS[k].label).join(' + ')}</strong>
+                      {searchResults !== null && <span> — {displayedResults.length} of {searchResults.length} results match</span>}
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Detected intent badge */}
@@ -982,7 +1172,7 @@ Be specific and reference actual phrases from the data where relevant.`
                           // Card left-border colour by relevance state
                           const borderColor = isChecked
                             ? verdict.relevant ? 'border-l-emerald-400' : 'border-l-red-300'
-                            : relevanceLoading && i < RELEVANCE_CAP ? 'border-l-blue-300' : 'border-l-slate-200'
+                            : relevanceLoading ? 'border-l-blue-300' : 'border-l-slate-200'
 
                           return (
                             <div
@@ -1008,7 +1198,7 @@ Be specific and reference actual phrases from the data where relevant.`
                                 <div className="flex-1" />
 
                                 {/* Relevance verdict */}
-                                {relevanceLoading && i < RELEVANCE_CAP && !isChecked && (
+                                {relevanceLoading && !isChecked && (
                                   <span className="flex items-center gap-1 text-[10px] text-blue-400">
                                     <Loader2 className="w-2.5 h-2.5 animate-spin" /> checking…
                                   </span>
@@ -1033,11 +1223,6 @@ Be specific and reference actual phrases from the data where relevant.`
                       </div>
                     )}
 
-                    {searchResults.length > RELEVANCE_CAP && relevanceSummary && (
-                      <div className="mt-3">
-                        <p className="text-[11px] text-slate-400">Relevance reviewed on first {RELEVANCE_CAP} results.</p>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
