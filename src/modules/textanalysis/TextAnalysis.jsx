@@ -71,6 +71,20 @@ const MUST_CONTAIN_PRESETS = {
     color: 'orange',
     variants: ['passport', 'passport control', 'border control', 'immigration', 'e-gate', 'egate', 'e gate', 'pasport', 'passort', 'passprt', 'passport controle', 'border force', 'uk border'],
   },
+  specialassistance: {
+    label: 'Special Assistance',
+    color: 'purple',
+    variants: [
+      'prm', 'special assistance', 'assisted travel', 'disability', 'disabled',
+      'wheelchair', 'wheel chair', 'wheel-chair', 'mobility', 'mobility aid',
+      'walking aid', 'walking frame', 'zimmer', 'crutches', 'crutch',
+      'assistance', 'assisted', 'accessible', 'accessibility',
+      'special needs', 'hearing loop', 'hearing impaired', 'visually impaired',
+      'blind', 'deaf', 'hidden disability', 'sunflower', 'sunflower lanyard',
+      'lanyard', 'neurodivergent', 'autism', 'autistic', 'dementia',
+      'assistance dog', 'guide dog', 'service dog',
+    ],
+  },
 }
 
 function matchesPresets(text, presetKeys) {
@@ -91,6 +105,7 @@ const PRESET_COLOUR_MAP = {
   emerald: { chip: 'bg-emerald-600 text-white border-emerald-600',inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-400' },
   rose:    { chip: 'bg-rose-600 text-white border-rose-600',      inactive: 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-400' },
   orange:  { chip: 'bg-orange-500 text-white border-orange-500',  inactive: 'bg-white text-orange-700 border-orange-200 hover:bg-orange-50 hover:border-orange-400' },
+  purple:  { chip: 'bg-purple-600 text-white border-purple-600',  inactive: 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50 hover:border-purple-400' },
 }
 
 // ── Sub-components ───────────────────────────────────────────────
@@ -446,6 +461,20 @@ Be specific and reference actual phrases from the data where relevant.`
   const mustContainWords = useMemo(() =>
     mustContainQuery.trim().toLowerCase().split(/[\s,]+/).filter(w => w.length > 0),
     [mustContainQuery]
+  )
+
+  // Responses matching active presets, computed without needing a search
+  const presetMatchResults = useMemo(() => {
+    if (!analysis || selectedMustPresets.length === 0) return null
+    return analysis.texts
+      .map((text, i) => ({ text, sentiment: analysis.sentiments[i], idx: i }))
+      .filter(r => matchesPresets(r.text, selectedMustPresets))
+  }, [analysis, selectedMustPresets])
+
+  // All variant strings for the active presets (used for highlighting)
+  const activePresetVariants = useMemo(() =>
+    selectedMustPresets.flatMap(k => MUST_CONTAIN_PRESETS[k]?.variants ?? []),
+    [selectedMustPresets]
   )
 
   // Merged keywords + phrases for the "most mentioned" chart, with search terms filtered out
@@ -965,12 +994,51 @@ Be specific and reference actual phrases from the data where relevant.`
                 </div>
               )}
 
-              {/* Idle state */}
+              {/* Idle state / preset-only results */}
               {searchResults === null && !searchLoading && (
-                <div className="flex flex-col items-center justify-center py-10 gap-3 text-slate-300">
-                  <Search className="w-8 h-8" />
-                  <p className="text-xs">Describe any topic above to search the responses</p>
-                </div>
+                presetMatchResults !== null ? (
+                  <div className="space-y-4">
+                    {/* Header */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-px bg-slate-100" />
+                      <span className="text-[11px] text-slate-500 font-medium shrink-0">
+                        {presetMatchResults.length} response{presetMatchResults.length !== 1 ? 's' : ''} mentioning{' '}
+                        <strong>{selectedMustPresets.map(k => MUST_CONTAIN_PRESETS[k].label).join(' + ')}</strong>
+                      </span>
+                      <div className="flex-1 h-px bg-slate-100" />
+                    </div>
+
+                    {presetMatchResults.length === 0 ? (
+                      <div className="flex flex-col items-center py-10 gap-2 text-slate-300">
+                        <Search className="w-6 h-6" />
+                        <p className="text-xs">No responses found for the selected filter{selectedMustPresets.length > 1 ? 's' : ''}</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {presetMatchResults.map(({ text, sentiment, idx }) => (
+                          <div
+                            key={idx}
+                            className="bg-white border border-slate-100 border-l-4 border-l-indigo-300 rounded-xl px-4 py-3.5 shadow-xs hover:shadow-sm transition-all"
+                          >
+                            <p className="text-sm text-slate-700 leading-relaxed mb-2.5">
+                              {highlightText(text, activePresetVariants)}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-slate-300">row {idx + 1}</span>
+                              <div className="flex-1" />
+                              <SentimentBadge label={sentiment.label} size="xs" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-10 gap-3 text-slate-300">
+                    <Search className="w-8 h-8" />
+                    <p className="text-xs">Describe any topic above to search the responses</p>
+                  </div>
+                )
               )}
 
               {/* ── Focused FTA ── */}
