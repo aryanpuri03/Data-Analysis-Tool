@@ -134,6 +134,20 @@
     "source": "filesystem"
   },
   {
+    "name": "American Airlines Tail Fin",
+    "slug": "Plane Fins-american-airlines-tail-fin",
+    "category": "Plane Fins",
+    "tags": [
+      "american",
+      "airlines",
+      "tail",
+      "fin",
+      "plane fins"
+    ],
+    "file": "icons/Plane Fins/Plane Fins-american-airlines-tail-fin.svg",
+    "source": "filesystem"
+  },
+  {
     "name": "Austrian Airlines Fin",
     "slug": "Plane Fins-austrian-airlines-fin",
     "category": "Plane Fins",
@@ -548,6 +562,20 @@
     "source": "filesystem"
   },
   {
+    "name": "Norwegian Air Tail Fin",
+    "slug": "Plane Fins-norwegian-air-tail-fin",
+    "category": "Plane Fins",
+    "tags": [
+      "norwegian",
+      "air",
+      "tail",
+      "fin",
+      "plane fins"
+    ],
+    "file": "icons/Plane Fins/Plane Fins-norwegian-air-tail-fin.svg",
+    "source": "filesystem"
+  },
+  {
     "name": "Pegasus Airlines Tail Fin",
     "slug": "Plane Fins-pegasus-airlines-tail-fin",
     "category": "Plane Fins",
@@ -573,6 +601,20 @@
       "plane fins"
     ],
     "file": "icons/Plane Fins/Plane Fins-qatar-airways-tail-fin.png",
+    "source": "filesystem"
+  },
+  {
+    "name": "Qatar Airways Tail Fin",
+    "slug": "Plane Fins-qatar-airways-tail-fin",
+    "category": "Plane Fins",
+    "tags": [
+      "qatar",
+      "airways",
+      "tail",
+      "fin",
+      "plane fins"
+    ],
+    "file": "icons/Plane Fins/Plane Fins-qatar-airways-tail-fin.svg",
     "source": "filesystem"
   },
   {
@@ -683,6 +725,19 @@
     "source": "filesystem"
   },
   {
+    "name": "Westjet Tail Fin",
+    "slug": "Plane Fins-westjet-tail-fin",
+    "category": "Plane Fins",
+    "tags": [
+      "westjet",
+      "tail",
+      "fin",
+      "plane fins"
+    ],
+    "file": "icons/Plane Fins/Plane Fins-westjet-tail-fin.svg",
+    "source": "filesystem"
+  },
+  {
     "name": "Aegean Air Logo",
     "slug": "logos-aegean-air-logo",
     "category": "logos",
@@ -721,6 +776,18 @@
     "source": "filesystem"
   },
   {
+    "name": "Air Canada",
+    "slug": "logos-air-canada",
+    "category": "logos",
+    "tags": [
+      "air",
+      "canada",
+      "logos"
+    ],
+    "file": "icons/logos/logos-air-canada.svg",
+    "source": "filesystem"
+  },
+  {
     "name": "Air Canada Canada",
     "slug": "logos-air-canada-canada",
     "category": "logos",
@@ -731,6 +798,19 @@
       "logos"
     ],
     "file": "icons/logos/logos-air-canada-canada.png",
+    "source": "filesystem"
+  },
+  {
+    "name": "Air Canada Canada",
+    "slug": "logos-air-canada-canada",
+    "category": "logos",
+    "tags": [
+      "air",
+      "canada",
+      "canada",
+      "logos"
+    ],
+    "file": "icons/logos/logos-air-canada-canada.svg",
     "source": "filesystem"
   },
   {
@@ -747,6 +827,19 @@
     "source": "filesystem"
   },
   {
+    "name": "Air Canada Logo",
+    "slug": "logos-air-canada-logo",
+    "category": "logos",
+    "tags": [
+      "air",
+      "canada",
+      "logo",
+      "logos"
+    ],
+    "file": "icons/logos/logos-air-canada-logo.svg",
+    "source": "filesystem"
+  },
+  {
     "name": "Air Canada Twitter",
     "slug": "logos-air-canada-twitter",
     "category": "logos",
@@ -757,6 +850,19 @@
       "logos"
     ],
     "file": "icons/logos/logos-air-canada-twitter.png",
+    "source": "filesystem"
+  },
+  {
+    "name": "Air Canada Twitter",
+    "slug": "logos-air-canada-twitter",
+    "category": "logos",
+    "tags": [
+      "air",
+      "canada",
+      "twitter",
+      "logos"
+    ],
+    "file": "icons/logos/logos-air-canada-twitter.svg",
     "source": "filesystem"
   },
   {
@@ -796,6 +902,18 @@
     "source": "filesystem"
   },
   {
+    "name": "American Airlines",
+    "slug": "logos-american-airlines",
+    "category": "logos",
+    "tags": [
+      "american",
+      "airlines",
+      "logos"
+    ],
+    "file": "icons/logos/logos-american-airlines.svg",
+    "source": "filesystem"
+  },
+  {
     "name": "American Airlines Logo",
     "slug": "logos-american-airlines-logo",
     "category": "logos",
@@ -806,6 +924,19 @@
       "logos"
     ],
     "file": "icons/logos/logos-american-airlines-logo.png",
+    "source": "filesystem"
+  },
+  {
+    "name": "American Airlines Logo",
+    "slug": "logos-american-airlines-logo",
+    "category": "logos",
+    "tags": [
+      "american",
+      "airlines",
+      "logo",
+      "logos"
+    ],
+    "file": "icons/logos/logos-american-airlines-logo.svg",
     "source": "filesystem"
   },
   {
@@ -844,6 +975,18 @@
       "logos"
     ],
     "file": "icons/logos/logos-china-airlines.png",
+    "source": "filesystem"
+  },
+  {
+    "name": "China Airlines",
+    "slug": "logos-china-airlines",
+    "category": "logos",
+    "tags": [
+      "china",
+      "airlines",
+      "logos"
+    ],
+    "file": "icons/logos/logos-china-airlines.svg",
     "source": "filesystem"
   },
   {
@@ -934,6 +1077,19 @@
     "source": "filesystem"
   },
   {
+    "name": "Grand China Air",
+    "slug": "logos-grand-china-air",
+    "category": "logos",
+    "tags": [
+      "grand",
+      "china",
+      "air",
+      "logos"
+    ],
+    "file": "icons/logos/logos-grand-china-air.svg",
+    "source": "filesystem"
+  },
+  {
     "name": "Hainan Airlines Logo",
     "slug": "logos-hainan-airlines-logo",
     "category": "logos",
@@ -1020,6 +1176,19 @@
     "source": "filesystem"
   },
   {
+    "name": "Norwegian Air Logo",
+    "slug": "logos-norwegian-air-logo",
+    "category": "logos",
+    "tags": [
+      "norwegian",
+      "air",
+      "logo",
+      "logos"
+    ],
+    "file": "icons/logos/logos-norwegian-air-logo.svg",
+    "source": "filesystem"
+  },
+  {
     "name": "Norwegian Airlines",
     "slug": "logos-norwegian-airlines",
     "category": "logos",
@@ -1029,6 +1198,18 @@
       "logos"
     ],
     "file": "icons/logos/logos-norwegian-airlines.png",
+    "source": "filesystem"
+  },
+  {
+    "name": "Norwegian Airlines",
+    "slug": "logos-norwegian-airlines",
+    "category": "logos",
+    "tags": [
+      "norwegian",
+      "airlines",
+      "logos"
+    ],
+    "file": "icons/logos/logos-norwegian-airlines.svg",
     "source": "filesystem"
   },
   {
@@ -1066,6 +1247,18 @@
       "logos"
     ],
     "file": "icons/logos/logos-qatar-airways.png",
+    "source": "filesystem"
+  },
+  {
+    "name": "Qatar Airways",
+    "slug": "logos-qatar-airways",
+    "category": "logos",
+    "tags": [
+      "qatar",
+      "airways",
+      "logos"
+    ],
+    "file": "icons/logos/logos-qatar-airways.svg",
     "source": "filesystem"
   },
   {
@@ -1154,6 +1347,17 @@
     "source": "filesystem"
   },
   {
+    "name": "Westjet",
+    "slug": "logos-westjet",
+    "category": "logos",
+    "tags": [
+      "westjet",
+      "logos"
+    ],
+    "file": "icons/logos/logos-westjet.svg",
+    "source": "filesystem"
+  },
+  {
     "name": "Westjet Canada",
     "slug": "logos-westjet-canada",
     "category": "logos",
@@ -1163,6 +1367,18 @@
       "logos"
     ],
     "file": "icons/logos/logos-westjet-canada.png",
+    "source": "filesystem"
+  },
+  {
+    "name": "Westjet Canada",
+    "slug": "logos-westjet-canada",
+    "category": "logos",
+    "tags": [
+      "westjet",
+      "canada",
+      "logos"
+    ],
+    "file": "icons/logos/logos-westjet-canada.svg",
     "source": "filesystem"
   },
   {
@@ -1422,6 +1638,20 @@
       "name logo"
     ],
     "file": "icons/name logo/name logo-qatar-airways-name-logo.png",
+    "source": "filesystem"
+  },
+  {
+    "name": "Qatar Airways Name Logo",
+    "slug": "name logo-qatar-airways-name-logo",
+    "category": "name logo",
+    "tags": [
+      "qatar",
+      "airways",
+      "name",
+      "logo",
+      "name logo"
+    ],
+    "file": "icons/name logo/name logo-qatar-airways-name-logo.svg",
     "source": "filesystem"
   },
   {
