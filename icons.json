@@ -130,7 +130,7 @@
       "fin",
       "plane fins"
     ],
-    "file": "icons/Plane Fins/Plane Fins-american-airlines-tail-fin.svg",
+    "file": "icons/Plane Fins/Plane Fins-american-airlines-tail-fin.png",
     "source": "filesystem"
   },
   {
@@ -544,7 +544,7 @@
       "fin",
       "plane fins"
     ],
-    "file": "icons/Plane Fins/Plane Fins-norwegian-air-tail-fin.svg",
+    "file": "icons/Plane Fins/Plane Fins-norwegian-air-tail-fin.png",
     "source": "filesystem"
   },
   {
@@ -572,7 +572,7 @@
       "fin",
       "plane fins"
     ],
-    "file": "icons/Plane Fins/Plane Fins-qatar-airways-tail-fin.svg",
+    "file": "icons/Plane Fins/Plane Fins-qatar-airways-tail-fin.png",
     "source": "filesystem"
   },
   {
@@ -679,7 +679,7 @@
       "fin",
       "plane fins"
     ],
-    "file": "icons/Plane Fins/Plane Fins-westjet-tail-fin.svg",
+    "file": "icons/Plane Fins/Plane Fins-westjet-tail-fin.png",
     "source": "filesystem"
   },
   {
@@ -717,7 +717,7 @@
       "canada",
       "logos"
     ],
-    "file": "icons/logos/logos-air-canada.svg",
+    "file": "icons/logos/logos-air-canada.png",
     "source": "filesystem"
   },
   {
@@ -730,7 +730,7 @@
       "canada",
       "logos"
     ],
-    "file": "icons/logos/logos-air-canada-canada.svg",
+    "file": "icons/logos/logos-air-canada-canada.png",
     "source": "filesystem"
   },
   {
@@ -743,7 +743,7 @@
       "logo",
       "logos"
     ],
-    "file": "icons/logos/logos-air-canada-logo.svg",
+    "file": "icons/logos/logos-air-canada-logo.png",
     "source": "filesystem"
   },
   {
@@ -756,7 +756,7 @@
       "twitter",
       "logos"
     ],
-    "file": "icons/logos/logos-air-canada-twitter.svg",
+    "file": "icons/logos/logos-air-canada-twitter.png",
     "source": "filesystem"
   },
   {
@@ -792,7 +792,7 @@
       "airlines",
       "logos"
     ],
-    "file": "icons/logos/logos-american-airlines.svg",
+    "file": "icons/logos/logos-american-airlines.png",
     "source": "filesystem"
   },
   {
@@ -805,7 +805,7 @@
       "logo",
       "logos"
     ],
-    "file": "icons/logos/logos-american-airlines-logo.svg",
+    "file": "icons/logos/logos-american-airlines-logo.png",
     "source": "filesystem"
   },
   {
@@ -843,7 +843,7 @@
       "airlines",
       "logos"
     ],
-    "file": "icons/logos/logos-china-airlines.svg",
+    "file": "icons/logos/logos-china-airlines.png",
     "source": "filesystem"
   },
   {
@@ -930,7 +930,7 @@
       "air",
       "logos"
     ],
-    "file": "icons/logos/logos-grand-china-air.svg",
+    "file": "icons/logos/logos-grand-china-air.png",
     "source": "filesystem"
   },
   {
@@ -1016,7 +1016,7 @@
       "logo",
       "logos"
     ],
-    "file": "icons/logos/logos-norwegian-air-logo.svg",
+    "file": "icons/logos/logos-norwegian-air-logo.png",
     "source": "filesystem"
   },
   {
@@ -1028,7 +1028,7 @@
       "airlines",
       "logos"
     ],
-    "file": "icons/logos/logos-norwegian-airlines.svg",
+    "file": "icons/logos/logos-norwegian-airlines.png",
     "source": "filesystem"
   },
   {
@@ -1065,7 +1065,7 @@
       "airways",
       "logos"
     ],
-    "file": "icons/logos/logos-qatar-airways.svg",
+    "file": "icons/logos/logos-qatar-airways.png",
     "source": "filesystem"
   },
   {
@@ -1150,7 +1150,7 @@
       "westjet",
       "logos"
     ],
-    "file": "icons/logos/logos-westjet.svg",
+    "file": "icons/logos/logos-westjet.png",
     "source": "filesystem"
   },
   {
@@ -1162,7 +1162,7 @@
       "canada",
       "logos"
     ],
-    "file": "icons/logos/logos-westjet-canada.svg",
+    "file": "icons/logos/logos-westjet-canada.png",
     "source": "filesystem"
   },
   {
@@ -1421,7 +1421,7 @@
       "logo",
       "name logo"
     ],
-    "file": "icons/name logo/name logo-qatar-airways-name-logo.svg",
+    "file": "icons/name logo/name logo-qatar-airways-name-logo.png",
     "source": "filesystem"
   },
   {
