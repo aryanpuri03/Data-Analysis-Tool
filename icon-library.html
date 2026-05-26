@@ -466,6 +466,32 @@
       letter-spacing: 0.04em;
     }
 
+    .brand-colour-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      margin-top: 0.35rem;
+      padding: 0.2rem 0.45rem;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-card);
+      border-radius: 20px;
+    }
+
+    .brand-colour-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .brand-colour-hex {
+      font-size: 0.62rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      font-family: 'SFMono-Regular', 'Consolas', monospace;
+      letter-spacing: 0.02em;
+    }
+
     /* IndexedDB badge */
     .icon-card .idb-badge {
       position: absolute;
@@ -1221,6 +1247,49 @@
         newCategoryInput.value = '';
       }
 
+      // ---- AIRLINE BRAND COLOURS (logos category only) ----
+      const BRAND_COLOURS = {
+        'logos-aegean-air-logo':        '#00539B',
+        'logos-aer-lingus-logo':        '#006A4E',
+        'logos-air-canada':             '#F01428',
+        'logos-air-canada-canada':      '#F01428',
+        'logos-air-canada-logo':        '#F01428',
+        'logos-air-canada-twitter':     '#F01428',
+        'logos-air-france-logo':        '#002157',
+        'logos-american':               '#0078D2',
+        'logos-american-airlines':      '#0078D2',
+        'logos-american-airlines-logo': '#0078D2',
+        'logos-british-airways-logo':   '#075AAA',
+        'logos-brussels-airlines-logo': '#CC0000',
+        'logos-china-airlines':         '#003BA9',
+        'logos-delta-airlines':         '#E01933',
+        'logos-easyjet-logo':           '#FF6600',
+        'logos-edelweiss-airlines-logo':'#E4002B',
+        'logos-emirates-airlines-logo': '#D4262B',
+        'logos-eurowings-logo':         '#6B0F6E',
+        'logos-finnair-logo':           '#003F8F',
+        'logos-grand-china-air':        '#D0011B',
+        'logos-hainan-airlines-logo':   '#D0011B',
+        'logos-icelandair-logo':        '#BE0000',
+        'logos-jet2-logo':              '#E87722',
+        'logos-klm-logo':               '#00A1DE',
+        'logos-loganair-logo':          '#002E6E',
+        'logos-lufthansa-logo':         '#05164D',
+        'logos-norwegian-air-logo':     '#D81939',
+        'logos-norwegian-airlines':     '#D81939',
+        'logos-norwegian-logo':         '#D81939',
+        'logos-pegasus-airlines-logo':  '#F68B24',
+        'logos-qatar-airways':          '#5C0632',
+        'logos-ryanair-logo':           '#073590',
+        'logos-transavia-logo':         '#00A650',
+        'logos-tui-logo':               '#E2001A',
+        'logos-turkish-airlines-logo':  '#E30A17',
+        'logos-united-logo':            '#003087',
+        'logos-vueling-airlines-logo':  '#FFB612',
+        'logos-westjet':                '#003DA5',
+        'logos-westjet-canada':         '#003DA5',
+      };
+
       // ---- RENDER GRID ----
       function getFilteredIcons() {
         let filtered = allIcons;
@@ -1262,6 +1331,13 @@
         iconGrid.innerHTML = filtered.map(icon => {
           const isIDB = icon.source === 'indexeddb';
           const imgSrc = icon.dataUrl || icon.file;
+          const brandColour = BRAND_COLOURS[icon.slug];
+          const colourChip = (icon.category === 'logos' && brandColour)
+            ? `<div class="brand-colour-chip">
+                 <span class="brand-colour-dot" style="background:${brandColour}"></span>
+                 <span class="brand-colour-hex">${brandColour}</span>
+               </div>`
+            : '';
           return `
             <div class="icon-card" data-slug="${icon.slug}" data-source="${icon.source}">
               ${isIDB ? '<span class="idb-badge">Uploaded</span>' : ''}
@@ -1271,6 +1347,7 @@
               </div>
               <div class="icon-name">${icon.name}</div>
               <div class="icon-category">${icon.category}</div>
+              ${colourChip}
               <div class="card-actions">
                 <button class="action-btn copy-btn" data-slug="${icon.slug}" data-file="${imgSrc}">Copy</button>
                 <button class="action-btn dl-btn" data-slug="${icon.slug}" data-file="${imgSrc}" data-name="${icon.name}">Download</button>
