@@ -34,7 +34,7 @@ SCRIPTS_DIR = Path(__file__).parent.resolve()
 PROJECT_ROOT = SCRIPTS_DIR.parent
 ICONS_DIR = PROJECT_ROOT / "icons"
 MANIFEST_PATH = PROJECT_ROOT / "icons.json"
-INDEX_PATH = PROJECT_ROOT / "index.html"
+INDEX_PATH = PROJECT_ROOT / "icon-library.html"
 
 # Supported image extensions
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".svg", ".webp"}
