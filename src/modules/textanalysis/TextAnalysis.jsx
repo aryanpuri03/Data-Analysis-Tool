@@ -193,6 +193,7 @@ export default function TextAnalysis() {
   const [selectedPhrases, setSelectedPhrases]     = useState([])
   const [mustContainQuery, setMustContainQuery]   = useState('')
   const [selectedMustPresets, setSelectedMustPresets] = useState([])
+  const [presetSentimentFilter, setPresetSentimentFilter] = useState('all')
 
   const expandCacheRef = useRef({})
 
@@ -285,6 +286,7 @@ Return ONLY the JSON array, no markdown, no explanation.`
     setFocusedAiError(null); setRelevanceVerdicts({}); setRelevanceLoading(false)
     setShowOnlyRelevant(false); setSearchSentimentFilter('all'); setDetectedIntent(null)
     setSelectedPhrases([]); setMustContainQuery(''); setSelectedMustPresets([])
+    setPresetSentimentFilter('all')
   }, [])
 
   const runFocusedSearch = useCallback(async () => {
@@ -476,6 +478,39 @@ Be specific and reference actual phrases from the data where relevant.`
     selectedMustPresets.flatMap(k => MUST_CONTAIN_PRESETS[k]?.variants ?? []),
     [selectedMustPresets]
   )
+
+  // Sentiment breakdown for preset-only results
+  const presetSentimentCounts = useMemo(() => {
+    const counts = { positive: 0, neutral: 0, negative: 0 }
+    if (!presetMatchResults) return counts
+    for (const r of presetMatchResults) counts[r.sentiment.label]++
+    return counts
+  }, [presetMatchResults])
+
+  // Preset-only results filtered by sentiment tab
+  const filteredPresetResults = useMemo(() => {
+    if (!presetMatchResults) return []
+    if (presetSentimentFilter === 'all') return presetMatchResults
+    return presetMatchResults.filter(r => r.sentiment.label === presetSentimentFilter)
+  }, [presetMatchResults, presetSentimentFilter])
+
+  // Most mentioned chart data for preset-only results
+  const presetTopMentions = useMemo(() => {
+    if (!presetMatchResults || presetMatchResults.length === 0) return []
+    const texts = presetMatchResults.map(r => r.text)
+    const lowerVariants = new Set(activePresetVariants.map(v => v.toLowerCase()))
+    const phraseItems  = extractPhrases(texts, 10)
+      .filter(p => !lowerVariants.has(p.phrase.toLowerCase()))
+      .map(p => ({ label: p.phrase, count: p.count }))
+    const keywordItems = extractKeywords(texts, 15)
+      .filter(k => !lowerVariants.has(k.word.toLowerCase()))
+      .map(k => ({ label: k.word, count: k.count }))
+    const seen   = new Set()
+    return [...phraseItems, ...keywordItems]
+      .filter(item => { if (seen.has(item.label)) return false; seen.add(item.label); return true })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 15)
+  }, [presetMatchResults, activePresetVariants])
 
   // Merged keywords + phrases for the "most mentioned" chart, with search terms filtered out
   const topMentions = useMemo(() => {
@@ -997,7 +1032,7 @@ Be specific and reference actual phrases from the data where relevant.`
               {/* Idle state / preset-only results */}
               {searchResults === null && !searchLoading && (
                 presetMatchResults !== null ? (
-                  <div className="space-y-4">
+                  <div className="space-y-5">
                     {/* Header */}
                     <div className="flex items-center gap-3">
                       <div className="flex-1 h-px bg-slate-100" />
@@ -1014,23 +1049,109 @@ Be specific and reference actual phrases from the data where relevant.`
                         <p className="text-xs">No responses found for the selected filter{selectedMustPresets.length > 1 ? 's' : ''}</p>
                       </div>
                     ) : (
-                      <div className="space-y-2.5">
-                        {presetMatchResults.map(({ text, sentiment, idx }) => (
-                          <div
-                            key={idx}
-                            className="bg-white border border-slate-100 border-l-4 border-l-indigo-300 rounded-xl px-4 py-3.5 shadow-xs hover:shadow-sm transition-all"
-                          >
-                            <p className="text-sm text-slate-700 leading-relaxed mb-2.5">
-                              {highlightText(text, activePresetVariants)}
+                      <>
+                        {/* Sentiment strip */}
+                        <div className="grid grid-cols-3 gap-3">
+                          {SENTIMENT_LABELS.map(label => {
+                            const count = presetSentimentCounts[label]
+                            const pct   = Math.round(count / presetMatchResults.length * 100)
+                            return (
+                              <div key={label} className={`rounded-xl p-3.5 border ${SENTIMENT_BG[label]} ${SENTIMENT_BORDER[label]}`}>
+                                <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${SENTIMENT_TEXT[label]}`}>{label}</p>
+                                <p className={`text-2xl font-black ${SENTIMENT_TEXT[label]}`}>{count}</p>
+                                <div className="mt-2 h-1 rounded-full bg-white/60 overflow-hidden">
+                                  <div className={`h-full rounded-full ${SENTIMENT_BAR[label]}`} style={{ width: `${pct}%` }} />
+                                </div>
+                                <p className={`text-[10px] mt-1 font-medium ${SENTIMENT_TEXT[label]} opacity-70`}>{pct}%</p>
+                              </div>
+                            )
+                          })}
+                        </div>
+
+                        {/* Most mentioned chart */}
+                        {presetTopMentions.length > 0 && (
+                          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
+                            <p className="text-sm font-semibold text-slate-700 mb-1">
+                              Most mentioned in{' '}
+                              <span className="text-indigo-600">{selectedMustPresets.map(k => MUST_CONTAIN_PRESETS[k].label).join(' + ')}</span>{' '}
+                              responses
                             </p>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-slate-300">row {idx + 1}</span>
-                              <div className="flex-1" />
-                              <SentimentBadge label={sentiment.label} size="xs" />
+                            <p className="text-[10px] text-slate-400 mb-4">Top co-occurring words &amp; phrases across {presetMatchResults.length} responses</p>
+                            <ResponsiveContainer width="100%" height={Math.max(180, presetTopMentions.length * 26)}>
+                              <BarChart
+                                data={[...presetTopMentions].reverse()}
+                                layout="vertical"
+                                margin={{ left: 4, right: 40, top: 0, bottom: 0 }}
+                              >
+                                <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                                <YAxis type="category" dataKey="label" tick={{ fontSize: 11, fill: '#475569' }} width={110} axisLine={false} tickLine={false} />
+                                <Tooltip
+                                  contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.10)', fontSize: 12 }}
+                                  formatter={(v, _, props) => [`${v} mention${v !== 1 ? 's' : ''}`, props.payload.label]}
+                                  cursor={{ fill: '#eef2ff' }}
+                                />
+                                <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={18} label={{ position: 'right', fontSize: 10, fill: '#94a3b8' }}>
+                                  {presetTopMentions.map((_, i) => (
+                                    <Cell key={i} fill="#6366f1" fillOpacity={0.35 + (presetTopMentions.length - i) / presetTopMentions.length * 0.55} />
+                                  ))}
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+
+                        {/* Sentiment filter tabs + response list */}
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Matched responses</p>
+                            <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+                              {['all', 'positive', 'negative', 'neutral'].map(f => (
+                                <button
+                                  key={f}
+                                  onClick={() => setPresetSentimentFilter(f)}
+                                  className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition-all capitalize ${
+                                    presetSentimentFilter === f
+                                      ? f === 'positive' ? 'bg-emerald-500 text-white shadow-sm'
+                                        : f === 'negative' ? 'bg-red-500 text-white shadow-sm'
+                                        : f === 'neutral'  ? 'bg-slate-400 text-white shadow-sm'
+                                        : 'bg-white text-slate-700 shadow-sm'
+                                      : 'text-slate-400 hover:text-slate-600'
+                                  }`}
+                                >
+                                  {f === 'all'
+                                    ? `All · ${presetMatchResults.length}`
+                                    : `${f.charAt(0).toUpperCase() + f.slice(1)} · ${presetSentimentCounts[f]}`}
+                                </button>
+                              ))}
                             </div>
                           </div>
-                        ))}
-                      </div>
+
+                          {filteredPresetResults.length === 0 ? (
+                            <div className="flex flex-col items-center py-8 gap-2 text-slate-300">
+                              <Search className="w-5 h-5" />
+                              <p className="text-xs">No {presetSentimentFilter} responses in this filter</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-2.5">
+                              {filteredPresetResults.map(({ text, sentiment, idx }) => (
+                                <div
+                                  key={idx}
+                                  className="bg-white border border-slate-100 border-l-4 border-l-indigo-300 rounded-xl px-4 py-3.5 shadow-xs hover:shadow-sm transition-all"
+                                >
+                                  <p className="text-sm text-slate-700 leading-relaxed mb-2.5">
+                                    {highlightText(text, activePresetVariants)}
+                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-slate-300">row {idx + 1}</span>
+                                    <div className="flex-1" />
+                                    <SentimentBadge label={sentiment.label} size="xs" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 ) : (
