@@ -421,26 +421,19 @@ def main():
                 print(f"  [OK] Copied (SVG)")
             else:
                 # Raster image: remove background
-                # Logos & name logos → simple white-to-transparent (preserves colours)
-                # Plane Fins → remove.bg API (handles complex photo backgrounds)
-                if category in ('logos', 'name logo'):
-                    print(f"  ... Removing white background (logo mode)")
-                    img = Image.open(img_path)
-                    result = remove_white_background(img)
+                # All categories → remove.bg API for best quality results
+                # Falls back to local method if API fails
+                try:
+                    print(f"  ... Removing background (remove.bg API)")
+                    result = remove_bg_api(img_path)
                     result.save(out_path, format='PNG')
-                    print(f"  [OK] Saved with transparent background (white removal)")
-                else:
-                    try:
-                        print(f"  ... Removing background (remove.bg API)")
-                        result = remove_bg_api(img_path)
-                        result.save(out_path, format='PNG')
-                        print(f"  [OK] Saved with transparent background (API)")
-                    except (urllib.error.URLError, urllib.error.HTTPError) as api_err:
-                        print(f"  [WARN] API failed ({api_err}), using local fallback...")
-                        img = Image.open(img_path)
-                        result = remove_background_fallback(img, category=category)
-                        result.save(out_path, format='PNG')
-                        print(f"  [OK] Saved with transparent background (fallback)")
+                    print(f"  [OK] Saved with transparent background (API)")
+                except (urllib.error.URLError, urllib.error.HTTPError) as api_err:
+                    print(f"  [WARN] API failed ({api_err}), using local fallback...")
+                    img = Image.open(img_path)
+                    result = remove_background_fallback(img, category=category)
+                    result.save(out_path, format='PNG')
+                    print(f"  [OK] Saved with transparent background (fallback)")
                 
             successes.append(out_filename)
         except Exception as e:
